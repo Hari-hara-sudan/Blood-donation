@@ -177,7 +177,7 @@ const ProfileScreen = ({ navigation, route }) => {
   };
 
   const formatDate = (timestamp) => {
-    if (!timestamp) return 'No donation yet';
+    if (!timestamp || !timestamp.seconds) return 'No donation yet';
     try {
       const date = new Date(timestamp.seconds * 1000);
       return date.toLocaleDateString('en-US', {
@@ -188,6 +188,7 @@ const ProfileScreen = ({ navigation, route }) => {
         minute: '2-digit'
       });
     } catch (error) {
+      console.error('Error formatting date:', error);
       return 'Invalid date';
     }
   };
@@ -310,7 +311,11 @@ const ProfileScreen = ({ navigation, route }) => {
         />
         <List.Item
           title="Last Donation"
-          description={profile.lastDonation ? new Date(profile.lastDonation.toDate()).toLocaleDateString() : 'No donations yet'}
+          description={
+            profile.lastDonation && typeof profile.lastDonation.toDate === 'function'
+              ? new Date(profile.lastDonation.toDate()).toLocaleDateString()
+              : 'No donations yet'
+          }
         />
       </List.Section>
 

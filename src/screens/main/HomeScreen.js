@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, ScrollView, StyleSheet, Alert, SafeAreaView, Image, TouchableOpacity } from 'react-native';
-import { Button, Card, Title, Text, Surface, Avatar, IconButton, Paragraph, Divider, Badge, Modal, Portal, Chip } from 'react-native-paper';
+import { Button, Card, Title, Text, Surface, Avatar, IconButton, Paragraph, Divider, Badge, Chip } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import * as Location from 'expo-location';
 import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, orderBy, setDoc, enableMultiTabIndexedDbPersistence, serverTimestamp, addDoc, deleteDoc } from 'firebase/firestore';
@@ -30,6 +30,7 @@ const HomeScreen = ({ navigation }) => {
   const [selectedDonor, setSelectedDonor] = useState(null);
   const [profilePhotoURL, setProfilePhotoURL] = useState(null);
   const [timers, setTimers] = useState({});
+  const [newRequestsAvailable, setNewRequestsAvailable] = useState(false);
 
   const urgencyLevels = [
     { label: 'Normal', value: 'normal', color: '#4CAF50', duration: 48 * 60 * 60 * 1000 }, // 2 days
@@ -460,58 +461,6 @@ const HomeScreen = ({ navigation }) => {
     );
   }
 
-  // Add this component inside HomeScreen
-  const DonorDetailsModal = () => (
-    <Portal>
-      <Modal 
-        visible={selectedDonor !== null}
-        onDismiss={() => setSelectedDonor(null)}
-        contentContainerStyle={styles.modalContainer}
-      >
-        {selectedDonor && (
-          <Card style={styles.modalCard}>
-            <ScrollView>
-              <Card.Content style={styles.modalContent}>
-                <View style={styles.acceptedBanner}>
-                  <Icon name="check-circle" size={20} color="#4CAF50" />
-                  <Text style={styles.acceptedText}>Request Accepted</Text>
-                </View>
-
-                <Title style={styles.donorTitle}>Donor Information</Title>
-                <View style={styles.donorInfo}>
-                  <Avatar.Icon size={80} icon="account" style={styles.donorAvatar} />
-                  <View style={styles.donorDetails}>
-                    <Text style={styles.donorName}>{selectedDonor.name}</Text>
-                    <Text style={styles.donorBlood}>
-                      Blood Group: {selectedDonor.bloodGroup}
-                    </Text>
-                  </View>
-                </View>
-
-                <Button
-                  mode="contained"
-                  icon="phone"
-                  onPress={() => Linking.openURL(`tel:${selectedDonor.phoneNumber}`)}
-                  style={styles.callButton}
-                >
-                  Call Donor
-                </Button>
-
-                <Button
-                  mode="outlined"
-                  onPress={() => setSelectedDonor(null)}
-                  style={styles.closeButton}
-                >
-                  Close
-                </Button>
-              </Card.Content>
-            </ScrollView>
-          </Card>
-        )}
-      </Modal>
-    </Portal>
-  );
-
   // Modify your renderYourRequest function
   const renderYourRequest = (request) => (
     <Card key={request.id} style={[styles.requestCard, styles.yourRequestCard]}>
@@ -523,7 +472,7 @@ const HomeScreen = ({ navigation }) => {
         {request.donorDetails ? (
           <Button
             mode="contained"
-            onPress={() => setSelectedDonor(request.donorDetails)}
+            onPress={() => navigation.navigate('DonorDetails', { donor: request.donorDetails })}
             style={styles.viewDetailsButton}
           >
             View Donor Details
@@ -722,6 +671,7 @@ const HomeScreen = ({ navigation }) => {
         });
 
         setAvailableRequests(requests);
+        setNewRequestsAvailable(requests.length > 0);
       } catch (error) {
         console.error('Error processing requests:', error);
       }
@@ -768,7 +718,17 @@ const HomeScreen = ({ navigation }) => {
                 </View>
               </Card.Content>
             </Card>
+            
           </View>
+          <Button
+            mode="contained"
+            icon="blood-bag"
+            style={styles.availableRequestsButton}
+            onPress={() => navigation.navigate('AvailableRequests')}
+          >
+            View Available Requests ({availableRequests.length})
+          </Button>
+
           {yourRequests.length > 0 && (
             <>
               <Title style={styles.sectionTitle}>Your Active Requests</Title>
@@ -776,14 +736,7 @@ const HomeScreen = ({ navigation }) => {
             </>
           )}
 
-          <Title style={styles.sectionTitle}>Available Blood Requests</Title>
-          {availableRequests.length > 0 ? renderAvailableRequests() : (
-            <Card style={styles.emptyCard}>
-              <Card.Content>
-                <Paragraph style={styles.emptyText}>No available requests in your area</Paragraph>
-              </Card.Content>
-            </Card>
-          )}
+          
         </ScrollView>
 
         <Button
@@ -795,8 +748,11 @@ const HomeScreen = ({ navigation }) => {
         >
           Create Request
         </Button>
+
+        {newRequestsAvailable && (
+          <Badge style={styles.newRequestBadge}>New</Badge>
+        )}
       </View>
-      <DonorDetailsModal />
     </SafeAreaView>
   );
 };
@@ -880,7 +836,7 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     color: '#666',
-    fontSize: 14,
+    fontSize: 12,
   },
   sectionTitle: {
     padding: 16,
@@ -1051,83 +1007,17 @@ const styles = StyleSheet.create({
   waitingButton: {
     backgroundColor: '#FFA000',
     borderRadius: 8,
+    marginBottom:5
   },
   deleteButton: {
     borderColor: '#FF5252',
     borderRadius: 8,
   },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: 'white',
-    margin: 0, // Remove margin to make it full screen
-    padding: 0, // Remove padding to make it full screen
-  },
-  modalCard: {
-    flex: 1,
-    backgroundColor: 'white',
-    borderRadius: 0, // Remove border radius for full screen
-    elevation: 0, // Remove elevation for full screen
-  },
-  modalContent: {
-    padding: 20, // Add padding to the content instead
-  },
-  modalContainer: {
+  Container: {
     padding: 20,
     margin: 20,
   },
-  modalCard: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    elevation: 5,
-  },
-  acceptedBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#E8F5E9',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  acceptedText: {
-    color: '#4CAF50',
-    marginLeft: 8,
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  donorTitle: {
-    fontSize: 22,
-    color: '#ff6f61',
-    marginBottom: 16,
-  },
-  donorInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  donorAvatar: {
-    backgroundColor: '#ff6f61',
-  },
-  donorDetails: {
-    marginLeft: 16,
-    flex: 1,
-  },
-  donorName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  donorBlood: {
-    fontSize: 16,
-    color: '#666',
-  },
-  callButton: {
-    marginTop: 16,
-    backgroundColor: '#4CAF50',
-  },
-  closeButton: {
-    marginTop: 12,
-    borderColor: '#666',
-  },
+
   profileImage: {
     width: 40,
     height: 40,
@@ -1181,6 +1071,22 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     backgroundColor: '#E0E0E0',
+  },
+  availableRequestsButton: {
+    margin: 16,
+    backgroundColor: '#ff6f61',
+    borderRadius: 8,
+    elevation: 2,
+  },
+  newRequestBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: '#ff6f61',
+    color: 'white',
+    fontSize: 12,
+    padding: 4,
+    borderRadius: 8,
   },
 });
 

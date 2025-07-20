@@ -23,20 +23,12 @@ const CreateRequestScreen = ({ navigation }) => {
 
   const urgencyLevels = [
     { 
-      label: 'Routine',
-      value: 'routine',
-      color: '#4CAF50',
-      duration: 48 * 60 * 60 * 1000,
-      icon: 'clock-outline',
-      description: 'Need within 48 hours'
-    },
-    { 
-      label: 'Priority',
-      value: 'priority',
-      color: '#FF9800',
-      duration: 6 * 60 * 60 * 1000,
-      icon: 'arrow-up',
-      description: 'Need within 6 hours'
+      label: 'Critical',
+      value: 'critical',
+      color: '#F44336',
+      duration: 30 * 60 * 1000,
+      icon: 'alert-octagon',
+      description: 'Need within 30 mins'
     },
     { 
       label: 'Emergency',
@@ -47,13 +39,24 @@ const CreateRequestScreen = ({ navigation }) => {
       description: 'Need within 1 hour'
     },
     { 
-      label: 'Critical',
-      value: 'critical',
-      color: '#F44336',
-      duration: 30 * 60 * 1000,
-      icon: 'alert-octagon',
-      description: 'Need within 30 mins'
+      label: 'Priority',
+      value: 'priority',
+      color: '#FF9800',
+      duration: 6 * 60 * 60 * 1000,
+      icon: 'arrow-up',
+      description: 'Need within 6 hours'
+    },
+    { 
+      label: 'Routine',
+      value: 'routine',
+      color: '#4CAF50',
+      duration: 48 * 60 * 60 * 1000,
+      icon: 'clock-outline',
+      description: 'Need within 48 hours'
     }
+
+
+
   ];
 
   const getCurrentLocation = async () => {

@@ -12,6 +12,8 @@ import RegisterScreen from './src/screens/auth/RegisterScreen';
 import ProfileScreen from './src/screens/main/ProfileScreen';
 import RequestConfirmationScreen from './src/screens/main/RequestConfirmationScreen';
 import CreateRequestScreen from './src/screens/CreateRequestScreen';
+import AvailableRequestsScreen from './src/screens/main/AvailableRequestsScreen';
+import DonorDetailsScreen from './src/screens/main/DonorDetailsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -44,11 +46,34 @@ export default function App() {
             <Stack.Screen name="Register" component={RegisterScreen} />
             <Stack.Screen name="Profile" component={ProfileScreen} />
             <Stack.Screen 
-              name="RequestConfirmation" 
+              name="ConfirmRequest" 
               component={RequestConfirmationScreen}
               options={{ title: 'Confirm Request' }}
             />
             <Stack.Screen name="CreateRequest" component={CreateRequestScreen}/>
+            <Stack.Screen 
+              name="AvailableRequests" 
+              component={AvailableRequestsScreen}
+              options={{ 
+                title: 'Available Requests',
+                headerStyle: {
+                  backgroundColor: '#ff6f61',
+                },
+                
+                headerTintColor: '#fff',
+              }}
+            />
+            <Stack.Screen 
+              name="DonorDetails" 
+              component={DonorDetailsScreen} // Register the new screen
+              options={{ 
+                title: 'Donor Details',
+                headerStyle: {
+                  backgroundColor: '#ff6f61',
+                },
+                headerTintColor: '#fff',
+              }}
+            />
           </Stack.Navigator>
         </NavigationContainer>
       </LocationProvider>
