@@ -11,12 +11,24 @@ const LoginScreen = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      setError('Please fill in all fields');
-      return;
+    setEmailError('');
+    setPasswordError('');
+    setError('');
+    let hasError = false;
+    if (!email) {
+      setEmailError('Email is required');
+      hasError = true;
     }
+    if (!password) {
+      setPasswordError('Password is required');
+      hasError = true;
+    }
+    if (hasError) return;
     setLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -39,8 +51,6 @@ const LoginScreen = ({ navigation }) => {
         <Title style={styles.title}>Blood Bank</Title>
       </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
       <TextInput
         label="Email"
         value={email}
@@ -51,7 +61,9 @@ const LoginScreen = ({ navigation }) => {
         autoCapitalize="none"
         left={<TextInput.Icon icon="email" color="#ff6f61" />}
         theme={{ colors: { primary: '#ff6f61' } }}
+        error={!!emailError}
       />
+      {emailError ? <Text style={styles.fieldError}>{emailError}</Text> : null}
 
       <TextInput
         label="Password"
@@ -59,10 +71,22 @@ const LoginScreen = ({ navigation }) => {
         onChangeText={setPassword}
         style={styles.input}
         mode="outlined"
-        secureTextEntry
+        secureTextEntry={!showPassword}
         left={<TextInput.Icon icon="lock" color="#ff6f61" />}
+        right={
+          <TextInput.Icon
+            icon={showPassword ? 'eye-off' : 'eye'}
+            color="#ff6f61"
+            onPress={() => setShowPassword(!showPassword)}
+            forceTextInputFocus={false}
+          />
+        }
         theme={{ colors: { primary: '#ff6f61' } }}
+        error={!!passwordError}
       />
+      {passwordError ? <Text style={styles.fieldError}>{passwordError}</Text> : null}
+
+      {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
         <Text style={styles.forgotPassword}>Forgot Password?</Text>
@@ -75,14 +99,15 @@ const LoginScreen = ({ navigation }) => {
         loading={loading}
         disabled={loading}
         theme={{ colors: { primary: '#ff6f61' } }}
+        labelStyle={styles.buttonLabel}
       >
         Login
       </Button>
 
       <View style={styles.registerContainer}>
-        <Text>Don't have an account? </Text>
+        <Text style={styles.registerPrompt}>Don't have an account? </Text>
         <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-          <Text style={styles.registerText}>Register here</Text>
+          <Text style={styles.registerText}>Register</Text>
         </TouchableOpacity>
       </View>
     </Surface>
@@ -94,12 +119,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff5f5',
     padding: 20,
-    paddingTop: 40, // Reduced from 60
+    paddingTop: 40,
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 30, // Reduced from 40
-    marginTop: 80,  // Reduced from 60
+    marginBottom: 30,
+    marginTop: 80,
   },
   title: {
     fontSize: 28,
@@ -115,27 +140,50 @@ const styles = StyleSheet.create({
     marginTop: 20,
     paddingVertical: 8,
     elevation: 2,
+    backgroundColor: '#ff6f61',
+  },
+  buttonLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: 'white',
   },
   error: {
     color: '#f44336',
     textAlign: 'center',
     marginBottom: 10,
+    marginTop: 4,
+  },
+  fieldError: {
+    color: '#f44336',
+    marginLeft: 4,
+    marginBottom: 2,
+    fontSize: 13,
   },
   forgotPassword: {
     color: '#ff6f61',
     textAlign: 'right',
     marginTop: 8,
     marginBottom: 16,
+    fontWeight: 'bold',
+    fontSize: 15,
   },
   registerContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 20,
+    marginTop: 32,
+    alignItems: 'center',
+  },
+  registerPrompt: {
+    color: '#666',
+    fontSize: 15,
   },
   registerText: {
     color: '#ff6f61',
     fontWeight: 'bold',
-  }
+    fontSize: 15,
+    textDecorationLine: 'underline',
+    marginLeft: 2,
+  },
 });
 
 export default LoginScreen;

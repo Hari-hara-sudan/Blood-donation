@@ -1,0 +1,33 @@
+{
+  "cli": {
+    "version": ">= 16.17.3",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "node": "18.18.0"
+    },
+    "preview": {
+      "distribution": "internal",
+      "node": "18.18.0"
+    },
+    "production": {
+      "autoIncrement": true,
+      "node": "18.18.0",
+      "env": {
+        "NODE_ENV": "production"
+      }
+    },
+    "apk": {
+      "android": {
+        "buildType": "apk"
+      },
+      "node": "18.18.0"
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

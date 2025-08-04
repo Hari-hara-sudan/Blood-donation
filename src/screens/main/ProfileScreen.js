@@ -24,9 +24,29 @@ const ProfileScreen = ({ navigation, route }) => {
     photoURL: null
   };
 
+  // Required fields for profile completeness
+  const requiredFields = [
+    { key: 'name', label: 'Name' },
+    { key: 'bloodGroup', label: 'Blood Group' },
+    { key: 'phoneNumber', label: 'Phone Number' }
+  ];
+
   const [profile, setProfile] = useState(
     route?.params?.profile || initialProfile
   );
+
+  // Check for missing required fields (guard against undefined profile)
+  const getIncompleteFields = () => {
+    if (!profile) return requiredFields;
+    return requiredFields.filter(f => !profile[f.key] || (typeof profile[f.key] === 'string' && profile[f.key].trim() === ''));
+  };
+  const [incompleteFields, setIncompleteFields] = useState(getIncompleteFields());
+
+  // Update incompleteFields whenever profile changes
+  useEffect(() => {
+    console.log('Profile state:', profile);
+    setIncompleteFields(getIncompleteFields());
+  }, [profile]);
   const [loading, setLoading] = useState(true);
   const [photoURL, setPhotoURL] = useState(null);
 
@@ -167,6 +187,12 @@ const ProfileScreen = ({ navigation, route }) => {
         ...profile,
         updatedAt: new Date()
       });
+      // Reload profile from Firestore after update
+      const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, auth.currentUser.uid));
+      if (userDoc.exists()) {
+        setProfile(userDoc.data());
+        setPhotoURL(userDoc.data().photoURL);
+      }
       Alert.alert('Success', 'Profile updated successfully');
     } catch (error) {
       console.error('Error updating profile:', error);
@@ -195,116 +221,115 @@ const ProfileScreen = ({ navigation, route }) => {
 
   return (
     <ScrollView style={styles.container}>
-      <Surface style={styles.header}>
-        <TouchableOpacity onPress={pickImage} disabled={loading}>
+      {/* Incomplete profile banner */}
+      {incompleteFields.length > 0 && (
+        <View style={styles.incompleteBanner}>
+          <Icon name="alert-circle" size={20} color="#fff" style={{ marginRight: 8 }} />
+          <Text style={styles.incompleteBannerText}>
+            Please complete your profile: {incompleteFields.map(f => f.label).join(', ')}
+          </Text>
+        </View>
+      )}
+
+      {/* Header section */}
+      <View style={styles.profileHeader}>
+        <TouchableOpacity onPress={pickImage} disabled={loading} style={styles.profileImageWrapper}>
           {photoURL ? (
-            <Image source={{ uri: photoURL }} style={styles.profileImage} />
+            <Image source={{ uri: photoURL }} style={styles.profileImageLarge} />
           ) : (
-            <Avatar.Icon 
-              size={120} 
-              icon="account"
-              style={styles.avatar}
-            />
+            <Avatar.Icon size={100} icon="account" style={styles.avatarLarge} />
           )}
-          <View style={styles.editIconContainer}>
+          <View style={styles.editIconContainerLarge}>
             {loading ? (
-              <ActivityIndicator size={20} color="white" />
+              <ActivityIndicator size={18} color="white" />
             ) : (
-              <Icon name="camera" size={20} color="white" />
+              <Icon name="camera" size={18} color="white" />
             )}
           </View>
         </TouchableOpacity>
-        
-        <Title style={styles.name}>{profile?.name}</Title>
-        <View style={styles.bloodGroupBadge}>
-          <Text style={styles.bloodGroupText}>{profile?.bloodGroup}</Text>
+        <Title style={styles.profileName}>{profile?.name || 'Your Name'}</Title>
+        <View style={styles.bloodGroupBadgeLarge}>
+          <Text style={styles.bloodGroupTextLarge}>{profile?.bloodGroup || 'Blood Group'}</Text>
         </View>
-      </Surface>
-
-      <View style={styles.statsContainer}>
-        <Card style={styles.statsCard}>
-          <Card.Content>
-            <Title style={styles.statNumber}>{profile?.donationCount || 0}</Title>
-            <Paragraph>Donations</Paragraph>
-          </Card.Content>
-        </Card>
-
-        <Card style={styles.statsCard}>
-          <Card.Content>
-            <Title style={styles.statNumber}>{profile?.livesImpacted || 0}</Title>
-            <Paragraph>Lives Saved</Paragraph>
-          </Card.Content>
-        </Card>
       </View>
 
-      <Card style={styles.detailsCard}>
+      {/* Stats section */}
+      <View style={styles.statsRow}>
+        <View style={styles.statBox}>
+          <Icon name="heart" size={28} color="#ff6f61" />
+          <Text style={styles.statNumberLarge}>{profile?.donationCount || 0}</Text>
+          <Text style={styles.statLabel}>Donations</Text>
+        </View>
+        <View style={styles.statBox}>
+          <Icon name="account-heart" size={28} color="#ff6f61" />
+          <Text style={styles.statNumberLarge}>{profile?.livesImpacted || 0}</Text>
+          <Text style={styles.statLabel}>Lives Saved</Text>
+        </View>
+      </View>
+
+      {/* Info card */}
+      <Card style={styles.infoCard}>
         <Card.Content>
-          <View style={styles.detailRow}>
-            <Icon name="phone" size={24} color="#ff6f61" />
-            <Paragraph>{profile?.phoneNumber}</Paragraph>
-          </View>
-          
-          <View style={styles.detailRow}>
-            <Icon name="email" size={24} color="#ff6f61" />
-            <Paragraph>{profile?.email}</Paragraph>
-          </View>
-
-          <View style={styles.detailRow}>
-            <Icon name="calendar" size={24} color="#ff6f61" />
-            <Paragraph>Last Donation: {formatDate(profile?.lastDonation)}</Paragraph>
-          </View>
-
-          <View style={styles.detailRow}>
-            <Icon name="hospital" size={24} color="#ff6f61" />
-            <Paragraph>Medical Conditions: {profile?.medicalConditions || 'None'}</Paragraph>
-          </View>
+          <View style={styles.infoRow}><Icon name="phone" size={20} color="#ff6f61" /><Text style={styles.infoText}>{profile?.phoneNumber || 'Phone Number'}</Text></View>
+          <View style={styles.infoRow}><Icon name="email" size={20} color="#ff6f61" /><Text style={styles.infoText}>{profile?.email || 'Email'}</Text></View>
+          <View style={styles.infoRow}><Icon name="calendar" size={20} color="#ff6f61" /><Text style={styles.infoText}>Last Donation: {formatDate(profile?.lastDonation)}</Text></View>
+          <View style={styles.infoRow}><Icon name="hospital" size={20} color="#ff6f61" /><Text style={styles.infoText}>Medical Conditions: {profile?.medicalConditions || 'None'}</Text></View>
         </Card.Content>
       </Card>
 
-      <TextInput
-        label="Name"
-        value={profile.name}
-        onChangeText={(text) => setProfile({...profile, name: text})}
-        style={styles.input}
-      />
+      {/* Editable form section */}
+      <View style={styles.formSection}>
+        <TextInput
+          label="Name"
+          value={profile.name}
+          onChangeText={(text) => setProfile({...profile, name: text})}
+          style={[styles.input, !profile.name ? styles.incompleteInput : null]}
+        />
+        <TextInput
+          label="Blood Group"
+          value={profile.bloodGroup}
+          onChangeText={(text) => setProfile({...profile, bloodGroup: text})}
+          style={[styles.input, !profile.bloodGroup ? styles.incompleteInput : null]}
+        />
+        <TextInput
+          label="Phone Number"
+          value={profile.phoneNumber}
+          onChangeText={(text) => setProfile({...profile, phoneNumber: text})}
+          style={[styles.input, !profile.phoneNumber ? styles.incompleteInput : null]}
+          keyboardType="phone-pad"
+        />
+        <TextInput
+          label="Address"
+          value={profile.address}
+          onChangeText={(text) => setProfile({...profile, address: text})}
+          style={styles.input}
+          multiline
+        />
+        <List.Item
+          title="Available for Donation"
+          right={() => (
+            <Switch
+              value={profile.isAvailable}
+              onValueChange={(value) => setProfile({...profile, isAvailable: value})}
+            />
+          )}
+        />
+        <Button
+          mode="contained"
+          onPress={handleUpdateProfile}
+          loading={loading}
+          style={styles.button}
+        >
+          Update Profile
+        </Button>
+      </View>
 
-      <TextInput
-        label="Phone Number"
-        value={profile.phoneNumber}
-        onChangeText={(text) => setProfile({...profile, phoneNumber: text})}
-        style={styles.input}
-        keyboardType="phone-pad"
-      />
-
-      <TextInput
-        label="Address"
-        value={profile.address}
-        onChangeText={(text) => setProfile({...profile, address: text})}
-        style={styles.input}
-        multiline
-      />
-
-      <List.Item
-        title="Available for Donation"
-        right={() => (
-          <Switch
-            value={profile.isAvailable}
-            onValueChange={(value) => setProfile({...profile, isAvailable: value})}
-          />
-        )}
-      />
-
-      <Button
-        mode="contained"
-        onPress={handleUpdateProfile}
-        loading={loading}
-        style={styles.button}
+      {/* Collapsible donation history */}
+      <List.Accordion
+        title="Donation History"
+        left={props => <List.Icon {...props} icon="history" color="#ff6f61" />}
+        style={styles.historyAccordion}
       >
-        Update Profile
-      </Button>
-
-      <List.Section>
-        <List.Subheader>Donation History</List.Subheader>
         <List.Item
           title="Total Donations"
           right={() => <Title>{profile.donationCount || 0}</Title>}
@@ -317,16 +342,9 @@ const ProfileScreen = ({ navigation, route }) => {
               : 'No donations yet'
           }
         />
-      </List.Section>
+      </List.Accordion>
 
-      <Button
-        mode="contained"
-        style={styles.editButton}
-        onPress={() => navigation.navigate('EditProfile')}
-      >
-        Edit Profile
-      </Button>
-
+      {/* Logout button at bottom */}
       <Button
         mode="outlined"
         style={styles.logoutButton}
@@ -344,94 +362,147 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff5f5',
   },
-  header: {
-    padding: 20,
+  incompleteBanner: {
+    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'white',
-    elevation: 4,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-  },
-  profileImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    marginBottom: 16,
-  },
-  avatar: {
     backgroundColor: '#ff6f61',
-    marginBottom: 16,
+    padding: 10,
+    margin: 10,
+    borderRadius: 8,
+    elevation: 2,
   },
-  editIconContainer: {
-    position: 'absolute',
-    right: -6,
-    bottom: 14,
-    backgroundColor: '#ff6f61',
-    borderRadius: 15,
-    width: 30,
-    height: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 4,
-  },
-  name: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  bloodGroupBadge: {
-    backgroundColor: '#ff6f61',
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-    borderRadius: 20,
-    marginTop: 8,
-  },
-  bloodGroupText: {
+  incompleteBannerText: {
     color: 'white',
     fontWeight: 'bold',
+    fontSize: 15,
   },
-  statsContainer: {
+  profileHeader: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    backgroundColor: 'white',
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    marginBottom: 8,
+    elevation: 2,
+  },
+  profileImageWrapper: {
+    position: 'relative',
+    marginBottom: 8,
+  },
+  profileImageLarge: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#eee',
+  },
+  avatarLarge: {
+    backgroundColor: '#ff6f61',
+  },
+  editIconContainerLarge: {
+    position: 'absolute',
+    right: -4,
+    bottom: 4,
+    backgroundColor: '#ff6f61',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 3,
+  },
+  profileName: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 8,
+  },
+  bloodGroupBadgeLarge: {
+    backgroundColor: '#ff6f61',
+    paddingHorizontal: 14,
+    paddingVertical: 3,
+    borderRadius: 16,
+    marginTop: 6,
+  },
+  bloodGroupTextLarge: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
+    marginVertical: 12,
+    paddingHorizontal: 8,
+  },
+  statBox: {
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderRadius: 16,
     padding: 16,
+    elevation: 2,
+    width: '44%',
   },
-  statsCard: {
-    width: '45%',
-    elevation: 3,
-    borderRadius: 12,
-  },
-  statNumber: {
+  statNumberLarge: {
     color: '#ff6f61',
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
+    marginTop: 4,
   },
-  detailsCard: {
-    margin: 16,
-    borderRadius: 12,
-    elevation: 3,
+  statLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 2,
   },
-  detailRow: {
+  infoCard: {
+    marginHorizontal: 16,
+    marginVertical: 8,
+    borderRadius: 14,
+    elevation: 2,
+    backgroundColor: 'white',
+  },
+  infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    marginBottom: 8,
+    gap: 8,
+  },
+  infoText: {
+    fontSize: 15,
+    color: '#333',
+  },
+  formSection: {
+    marginHorizontal: 16,
+    marginVertical: 12,
+    padding: 16,
+    backgroundColor: 'white',
+    borderRadius: 14,
+    elevation: 2,
   },
   input: {
     marginBottom: 12,
     backgroundColor: '#fff',
   },
+  incompleteInput: {
+    borderColor: '#ff6f61',
+    borderWidth: 2,
+  },
   button: {
     marginVertical: 16,
     backgroundColor: '#ff6f61',
+    borderRadius: 8,
   },
-  editButton: {
-    margin: 16,
-    backgroundColor: '#ff6f61',
-    paddingVertical: 8,
+  historyAccordion: {
+    marginHorizontal: 16,
+    marginVertical: 8,
+    backgroundColor: 'white',
+    borderRadius: 14,
+    elevation: 2,
   },
   logoutButton: {
     margin: 16,
     borderColor: '#ff6f61',
     borderWidth: 2,
+    borderRadius: 8,
   },
 });
 

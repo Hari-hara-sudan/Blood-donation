@@ -9,12 +9,29 @@ import { db, auth } from '../../services/firebase/config';
 import { deleteDoc, doc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
+
 const urgencyLevels = [
   { label: 'Routine', value: 'routine', color: '#4CAF50', duration: 48 * 60 * 60 * 1000 },
   { label: 'Priority', value: 'priority', color: '#FF9800', duration: 6 * 60 * 60 * 1000 },
   { label: 'Emergency', value: 'emergency', color: '#FF5722', duration: 1 * 60 * 60 * 1000 },
   { label: 'Critical', value: 'critical', color: '#F44336', duration: 30 * 60 * 1000 },
 ];
+
+const BLOOD_COMPATIBILITY = {
+  'O-':    ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'],
+  'O+':    ['O+', 'A+', 'B+', 'AB+'],
+  'A-':    ['A-', 'A+', 'AB-', 'AB+'],
+  'A+':    ['A+', 'AB+'],
+  'B-':    ['B-', 'B+', 'AB-', 'AB+'],
+  'B+':    ['B+', 'AB+'],
+  'AB-':   ['AB-', 'AB+'],
+  'AB+':   ['AB+'],
+};
+
+function isBloodCompatible(donorGroup, recipientGroup) {
+  if (!donorGroup || !recipientGroup) return false;
+  return BLOOD_COMPATIBILITY[donorGroup]?.includes(recipientGroup);
+}
 
 const AvailableRequestsScreen = ({ navigation }) => {
   const [availableRequests, setAvailableRequests] = useState([]);
@@ -46,14 +63,13 @@ const AvailableRequestsScreen = ({ navigation }) => {
 
     const requestsQuery = query(
       collection(db, 'requests'),
-      where('status', 'in', ['active', 'accepted'])
+      where('status', '==', 'active')
     );
 
     const unsubscribeRequests = onSnapshot(requestsQuery, 
       (snapshot) => {
         try {
           const availableRequestsList = [];
-          
           snapshot.forEach((doc) => {
             const data = doc.data();
             const requestItem = { 
@@ -72,10 +88,10 @@ const AvailableRequestsScreen = ({ navigation }) => {
               requestItem.distance = distance;
             }
 
-            // Only show active requests from OTHER users to potential donors
+            // Show active requests from OTHER users to potential donors
             if (data.status === 'active' && 
                 !data.donorDetails && 
-                data.userId !== auth.currentUser?.uid) { // Add this condition
+                data.userId !== auth.currentUser?.uid) {
               if (!requestItem.distance || requestItem.distance <= 15) {
                 availableRequestsList.push(requestItem);
               }
@@ -167,27 +183,38 @@ const AvailableRequestsScreen = ({ navigation }) => {
     availableRequests.map(request => {
       const urgencyLevel = urgencyLevels.find(level => level.value === request.urgency);
       const isExpired = timers[request.id] === 'Expired';
-
+      const isValidDistance = typeof request.distance === 'number' && !isNaN(request.distance);
+      const isAcceptedByMe = request.status === 'accepted' && request.donorId === auth.currentUser?.uid;
       return (
         <Card key={request.id} style={[styles.requestCard]}>
           <Card.Content>
             <View style={styles.requestHeaderRow}>
               <Title style={styles.bloodTitle}>{request.bloodGroup} Blood Needed</Title>
-              <View style={[styles.urgencyBadge, { backgroundColor: `${urgencyLevel?.color}15` }]}>
+              <View style={[styles.urgencyBadge, { backgroundColor: `${urgencyLevel?.color}15` }]}> 
                 <View style={[styles.urgencyDot, { backgroundColor: urgencyLevel?.color }]} />
-                <Text style={[styles.urgencyText, { color: urgencyLevel?.color }]}>
+                <Text style={[styles.urgencyText, { color: urgencyLevel?.color }]}> 
                   {urgencyLevel?.label}
                 </Text>
               </View>
             </View>
             
+            <Paragraph>Patient Name: {request?.patientName || 'N/A'}</Paragraph>
+<Paragraph>
+  Donor(s): {
+    Array.isArray(request?.donors) && request.donors.length > 0
+      ? request.donors.map((donor, idx) => donor?.name || `Donor ${idx + 1}`).join(', ')
+      : 'No donor has accepted yet'
+  }
+</Paragraph>
             <Paragraph>Hospital: {request.hospital}</Paragraph>
+            <Paragraph>Address: {request.hospitalAddress || request.address || 'N/A'}</Paragraph>
+            <Paragraph>Remaining Units: {typeof request.units === 'number' && typeof request.unitsFulfilled === 'number' ? (request.units - request.unitsFulfilled) : request.units || 'N/A'}</Paragraph>
             <Paragraph>Units Needed: {request.units}</Paragraph>
-            <Paragraph>Distance: {request.distance ? request.distance.toFixed(2) : 'N/A'} km</Paragraph>
+            <Paragraph>Distance: {isValidDistance ? request.distance.toFixed(2) : 'N/A'} km</Paragraph>
             
             <View style={styles.timerContainer}>
               <Icon name="clock-outline" size={16} color={isExpired ? '#F44336' : urgencyLevel?.color} />
-              <Text style={[
+              <Text style={[ 
                 styles.timerText, 
                 { color: isExpired ? '#F44336' : urgencyLevel?.color }
               ]}>
@@ -195,14 +222,25 @@ const AvailableRequestsScreen = ({ navigation }) => {
               </Text>
             </View>
 
-            <Button 
-              mode="contained" 
-              style={[styles.actionButton, isExpired && styles.disabledButton]}
-              onPress={() => navigation.navigate('ConfirmRequest', { request })}
-              disabled={isExpired}
-            >
-              {isExpired ? 'Request Expired' : 'Accept Request'}
-            </Button>
+            {isAcceptedByMe ? (
+              <Button
+                mode="contained"
+                icon="map"
+                style={styles.actionButton}
+                onPress={() => navigation.navigate('MapScreen', { requestId: request.id })}
+              >
+                View Map
+              </Button>
+            ) : (
+              <Button 
+                mode="contained" 
+                style={[styles.actionButton, isExpired && styles.disabledButton]}
+                onPress={() => navigation.navigate('ConfirmRequest', { request })}
+                disabled={isExpired}
+              >
+                {isExpired ? 'Request Expired' : 'Accept Request'}
+              </Button>
+            )}
           </Card.Content>
         </Card>
       );

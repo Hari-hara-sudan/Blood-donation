@@ -321,6 +321,8 @@ const HomeScreen = ({ navigation }) => {
     return () => unsubscribeAuth();
   }, []);
 
+  // ...KYC check removed...
+
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -444,22 +446,23 @@ const HomeScreen = ({ navigation }) => {
   }, [availableRequests]);
 
   // Show loading or error state
-  if (locationError) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>
-          {locationError}
-        </Text>
-        <Button
-          mode="contained"
-          onPress={() => setRetryCount(prev => prev + 1)}
-          style={styles.retryButton}
-        >
-          Retry Location Access
-        </Button>
-      </View>
-    );
-  }
+  // Remove the early return for locationError
+  // if (locationError) {
+  //   return (
+  //     <View style={styles.container}>
+  //       <Text style={styles.errorText}>
+  //         {locationError}
+  //       </Text>
+  //       <Button
+  //         mode="contained"
+  //         onPress={() => setRetryCount(prev => prev + 1)}
+  //         style={styles.retryButton}
+  //       >
+  //         Retry Location Access
+  //       </Button>
+  //     </View>
+  //   );
+  // }
 
   // Modify your renderYourRequest function
   const renderYourRequest = (request) => (
@@ -469,23 +472,23 @@ const HomeScreen = ({ navigation }) => {
         <Paragraph>Hospital: {request.hospital}</Paragraph>
         <Paragraph>Units Needed: {request.units}</Paragraph>
         
-        {request.donorDetails ? (
-          <Button
-            mode="contained"
-            onPress={() => navigation.navigate('DonorDetails', { donor: request.donorDetails })}
-            style={styles.viewDetailsButton}
-          >
-            View Donor Details
-          </Button>
-        ) : (
-          <Button
-            mode="contained"
-            disabled
-            style={styles.waitingButton}
-          >
-            Waiting for Donor
-          </Button>
-        )}
+        {Array.isArray(request.donors) && request.donors.length > 0 ? (
+  <Button
+    mode="contained"
+    onPress={() => navigation.navigate('DonorDetails', { donors: request.donors, requestId: request.id })}
+    style={styles.viewDetailsButton}
+  >
+    View Donor Details
+  </Button>
+) : (
+  <Button
+    mode="contained"
+    disabled
+    style={styles.waitingButton}
+  >
+    Waiting for Donor
+  </Button>
+)}
 
         <Button
           mode="outlined"
@@ -525,27 +528,6 @@ const HomeScreen = ({ navigation }) => {
       </Card>
     );
   };
-
-  // useEffect(() => {
-  //   const fetchProfilePhoto = async () => {
-  //     if (!auth.currentUser) {
-  //       console.error('User is not authenticated');
-  //       return;
-  //     }
-  
-  //     try {
-  //       const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, auth.currentUser.uid));
-  //       if (userDoc.exists()) {
-  //         const userData = userDoc.data();
-  //         setProfilePhotoURL(userData.photoURL);
-  //       }
-  //     } catch (error) {
-  //       console.error('Error fetching profile photo:', error);
-  //     }
-  //   };
-  
-  //   fetchProfilePhoto();
-  // }, []);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -592,7 +574,9 @@ const HomeScreen = ({ navigation }) => {
               </View>
             </View>
             
+            <Paragraph>Patient: {request.patientName || 'Anonymous'}</Paragraph>
             <Paragraph>Hospital: {request.hospital}</Paragraph>
+            <Paragraph>Address: {request.address || 'Not specified'}</Paragraph>
             <Paragraph>Units Needed: {request.units}</Paragraph>
             <Paragraph>Distance: {request.distance?.toFixed(2)} km</Paragraph>
             
@@ -680,79 +664,121 @@ const HomeScreen = ({ navigation }) => {
     return () => unsubscribe();
   }, [location]);
 
+  // Add useEffect to fetch user's created requests
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const yourRequestsQuery = query(
+      collection(db, 'requests'),
+      where('userId', '==', auth.currentUser.uid),
+      where('status', 'in', ['active', 'accepted'])
+    );
+
+    const unsubscribeYourRequests = onSnapshot(yourRequestsQuery, (snapshot) => {
+      const userRequests = [];
+      snapshot.forEach((doc) => {
+        userRequests.push({ id: doc.id, ...doc.data() });
+      });
+      setYourRequests(userRequests);
+    });
+
+    return () => unsubscribeYourRequests();
+  }, []);
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.mainContainer}>
-        <Surface style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Icon name="blood-bag" size={24} color="#ff6f61" />
-            <Title style={styles.headerTitle}>Blood Bank</Title>
-          </View>
-          <TouchableOpacity style={styles.profileIconContainer} onPress={() => navigation.navigate('Profile')}>
-            {profilePhotoURL ? (
-              <Image source={{ uri: profilePhotoURL }} style={styles.profileImage} />
-            ) : (
-              <Avatar.Icon size={40} icon="account" style={styles.avatar} />
-            )}
-          </TouchableOpacity>
-        </Surface>
-
-        <ScrollView style={styles.container}>
-          <View style={styles.statsContainer}>
-            <Card style={styles.statsCard}>
-              <Card.Content style={styles.cardContent}>
-                <Avatar.Icon size={40} icon="water" style={styles.icon} />
-                <View>
-                  <Title style={styles.statNumber}>{stats.totalRequests}</Title>
-                  <Paragraph style={styles.statLabel}>Total Requests</Paragraph>
-                </View>
-              </Card.Content>
-            </Card>
-
-            <Card style={styles.statsCard}>
-              <Card.Content style={styles.cardContent}>
-                <Avatar.Icon size={40} icon="heart-pulse" style={styles.icon} />
-                <View>
-                  <Title style={styles.statNumber}>{stats.donations}</Title>
-                  <Paragraph style={styles.statLabel}>Lives Saved</Paragraph>
-                </View>
-              </Card.Content>
-            </Card>
-            
-          </View>
+      {locationError ? (
+        <View style={styles.container}>
+          <Text style={styles.errorText}>{locationError}</Text>
           <Button
             mode="contained"
-            icon="blood-bag"
-            style={styles.availableRequestsButton}
-            onPress={() => navigation.navigate('AvailableRequests')}
+            onPress={() => setRetryCount(prev => prev + 1)}
+            style={styles.retryButton}
           >
-            View Available Requests ({availableRequests.length})
+            Retry Location Access
+          </Button>
+        </View>
+      ) : (
+        <View style={styles.mainContainer}>
+          <Surface style={styles.header}>
+            <View style={styles.headerLeft}>
+              <Icon name="blood-bag" size={24} color="#ff6f61" />
+              <Title style={styles.headerTitle}>Blood Bank</Title>
+            </View>
+            <TouchableOpacity style={styles.profileIconContainer} onPress={() => navigation.navigate('Profile')}>
+              {profilePhotoURL ? (
+                <Image source={{ uri: profilePhotoURL }} style={styles.profileImage} />
+              ) : (
+                <Avatar.Icon size={40} icon="account" style={styles.avatar} />
+              )}
+            </TouchableOpacity>
+          </Surface>
+
+          <ScrollView style={styles.container}>
+            <View style={styles.statsContainer}>
+              <Card style={styles.statsCard}>
+                <Card.Content style={styles.cardContent}>
+                  <Avatar.Icon size={40} icon="water" style={styles.icon} />
+                  <View>
+                    <Title style={styles.statNumber}>{stats.totalRequests}</Title>
+                    <Paragraph style={styles.statLabel}>Total Requests</Paragraph>
+                  </View>
+                </Card.Content>
+              </Card>
+
+              <Card style={styles.statsCard}>
+                <Card.Content style={styles.cardContent}>
+                  <Avatar.Icon size={40} icon="heart-pulse" style={styles.icon} />
+                  <View>
+                    <Title style={styles.statNumber}>{stats.donations}</Title>
+                    <Paragraph style={styles.statLabel}>Lives Saved</Paragraph>
+                  </View>
+                </Card.Content>
+              </Card>
+              
+            </View>
+            <Button
+              mode="contained"
+              icon="blood-bag"
+              style={styles.availableRequestsButton}
+              onPress={() => navigation.navigate('AvailableRequests')}
+            >
+              View Available Requests ({availableRequests.length})
+            </Button>
+
+            <Button
+              mode="contained"
+              icon="check-circle"
+              style={[styles.availableRequestsButton, { backgroundColor: '#2196F3', marginTop: 8 }]}
+              onPress={() => navigation.navigate('AcceptedRequests')}
+            >
+              View Accepted Requests
+            </Button>
+
+            {yourRequests.length > 0 && (
+              <>
+                <Title style={styles.sectionTitle}>Your Active Requests</Title>
+                {yourRequests.map(request => renderYourRequest(request))}
+              </>
+            )}
+
+          </ScrollView>
+
+          <Button
+            mode="contained"
+            icon="plus"
+            style={styles.fab}
+            labelStyle={styles.fabLabel}
+            onPress={() => navigation.navigate('CreateRequest')}
+          >
+            Create Request
           </Button>
 
-          {yourRequests.length > 0 && (
-            <>
-              <Title style={styles.sectionTitle}>Your Active Requests</Title>
-              {yourRequests.map(request => renderYourRequest(request))}
-            </>
+          {newRequestsAvailable && (
+            <Badge style={styles.newRequestBadge}>New</Badge>
           )}
-
-          
-        </ScrollView>
-
-        <Button
-          mode="contained"
-          icon="plus"
-          style={styles.fab}
-          labelStyle={styles.fabLabel}
-          onPress={() => navigation.navigate('CreateRequest')}
-        >
-          Create Request
-        </Button>
-
-        {newRequestsAvailable && (
-          <Badge style={styles.newRequestBadge}>New</Badge>
-        )}
-      </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -980,25 +1006,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 16,
-  },
-  viewDetailsButton: {
-    backgroundColor: '#4CAF50',
-    flex: 1,
-    marginRight: 8,
-  },
-  waitingButton: {
-    backgroundColor: '#FFEB3B',
-    flex: 1,
-    marginRight: 8,
-  },
-  deleteButton: {
-    borderColor: '#FF5252',
-    borderWidth: 1,
-    flex: 1,
-  },
-  buttonContainer: {
-    marginTop: 12,
-    gap: 8,
   },
   viewDetailsButton: {
     backgroundColor: 'rgb(33, 193, 38)',

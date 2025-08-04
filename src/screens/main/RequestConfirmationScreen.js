@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Alert } from 'react-native';
 import { Button, Card, Title, Text, Surface, Paragraph } from 'react-native-paper';
-import { doc, getDoc, updateDoc, serverTimestamp, addDoc, collection } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp, addDoc, collection, runTransaction } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase/config';
 
 const RequestConfirmationScreen = ({ route, navigation }) => {
@@ -16,17 +16,36 @@ const RequestConfirmationScreen = ({ route, navigation }) => {
       
       const requestRef = doc(db, 'requests', request.id);
       
-      // Update request with donor details
-      await updateDoc(requestRef, {
-        status: 'accepted',
-        donorId: auth.currentUser.uid,
-        donorDetails: {
-          name: userData.name,
-          phoneNumber: userData.phoneNumber,
-          bloodGroup: userData.bloodGroup,
-          photoURL: userData.photoURL || null,
-          acceptedAt: serverTimestamp()
+      // Multi-donor acceptance logic: atomic transaction
+      await runTransaction(db, async (transaction) => {
+        const reqDoc = await transaction.get(requestRef);
+        if (!reqDoc.exists) throw new Error('Request does not exist');
+        const reqData = reqDoc.data();
+        const donors = reqData.donors || [];
+        const unitsFulfilled = reqData.unitsFulfilled || 0;
+        const units = reqData.units || 1;
+
+        // Prevent duplicate acceptance
+        if (donors.includes(auth.currentUser.uid)) {
+          throw new Error('You have already accepted this request.');
         }
+        if (unitsFulfilled >= units) {
+          throw new Error('All required units have already been fulfilled.');
+        }
+
+        // Add donor to donors array and increment unitsFulfilled
+        transaction.update(requestRef, {
+          status: 'accepted',
+          donors: [...donors, auth.currentUser.uid],
+          unitsFulfilled: unitsFulfilled + 1,
+          donorDetails: {
+            name: userData.name,
+            phoneNumber: userData.phoneNumber,
+            bloodGroup: userData.bloodGroup,
+            photoURL: userData.photoURL || null,
+            acceptedAt: serverTimestamp()
+          }
+        });
       });
 
       // Create notification for requester
@@ -42,7 +61,7 @@ const RequestConfirmationScreen = ({ route, navigation }) => {
       Alert.alert(
         'Success',
         'Thank you for accepting this request!',
-        [{ text: 'OK', onPress: () => navigation.navigate('Home') }]
+        [{ text: 'OK', onPress: () => navigation.navigate('MapScreen', { requestId: request.id }) }]
       );
     } catch (error) {
       console.error('Error accepting request:', error);
@@ -63,7 +82,7 @@ const RequestConfirmationScreen = ({ route, navigation }) => {
             <Paragraph>Blood Type: {request.bloodGroup}</Paragraph>
             <Paragraph>Units Needed: {request.units}</Paragraph>
             <Paragraph>Hospital: {request.hospital}</Paragraph>
-            <Paragraph>Distance: {request.distance.toFixed(2)} km</Paragraph>
+            <Paragraph>Distance: {typeof request.distance === 'number' && !isNaN(request.distance) ? request.distance.toFixed(2) : 'N/A'} km</Paragraph>
           </Card.Content>
         </Card>
 
