@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "BAPP",
-    "slug": "bapp",
+  "name": "Puzhal",
+  "slug": "puzhal",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -29,7 +29,7 @@
           "apiKey": "AIzaSyBlB34GJNGbRexESR9zILOTx7s5mcIPhkE"
         }
       },
-      "package": "com.harry_r.BAPP",
+  "package": "com.harry_r.puzhal",
       "googleServicesFile": "./android/app/google-services.json"
     },
     "web": {
@@ -40,13 +40,13 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow BAPP to use your location to find nearby blood requests."
+          "locationAlwaysAndWhenInUsePermission": "Allow Puzhal to use your location to find nearby blood requests."
         }
       ],
       "expo-router",
       "expo-maps"
     ],
-    "scheme": "bapp",
+    "scheme": "puzhal",
     "extra": {
       "router": {},
       "eas": {
