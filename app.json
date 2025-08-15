@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "BAPP",
+    "slug": "bapp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FF6B4A"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyBlB34GJNGbRexESR9zILOTx7s5mcIPhkE"
+        }
+      },
+      "package": "com.harry_r.BAPP",
+      "googleServicesFile": "./android/app/google-services.json"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow BAPP to use your location to find nearby blood requests."
+        }
+      ],
+      "expo-router",
+      "expo-maps"
+    ],
+    "scheme": "bapp",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f1c79f40-ee85-458b-ab00-e770a3e3ac6d"
+      }
+    }
+  }
+}

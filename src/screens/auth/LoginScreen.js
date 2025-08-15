@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { TextInput, Button, Text, Title, Surface } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '../../services/firebase/config';
+import { testFirebaseConnection } from '../../utils/testFirebase';
 
 const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
@@ -14,6 +15,18 @@ const LoginScreen = ({ navigation }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
+
+  const handleTestConnection = async () => {
+    setLoading(true);
+    const result = await testFirebaseConnection();
+    setLoading(false);
+    
+    if (result.success) {
+      Alert.alert('Success', result.message + '\n\nYou can now try:\nEmail: test@example.com\nPassword: test123456');
+    } else {
+      Alert.alert('Firebase Error', `${result.error}: ${result.message}`);
+    }
+  };
 
   const handleLogin = async () => {
     setEmailError('');
@@ -30,15 +43,42 @@ const LoginScreen = ({ navigation }) => {
     }
     if (hasError) return;
     setLoading(true);
+    
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      setLoading(false);
+      setError('Connection timeout. Please check your internet connection and try again.');
+    }, 30000); // 30 second timeout
+    
     try {
+      console.log('Attempting login for:', email);
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      console.log('Login successful:', userCredential.user.uid);
+      clearTimeout(timeoutId);
+      
       await AsyncStorage.setItem('user', JSON.stringify(userCredential.user));
       navigation.reset({
         index: 0,
         routes: [{ name: 'Home' }],
       });
     } catch (error) {
-      setError('Invalid email or password');
+      clearTimeout(timeoutId);
+      console.error('Login error:', error);
+      let friendly;
+      if (error.code === 'auth/user-not-found') {
+        friendly = 'No account found with this email';
+      } else if (error.code === 'auth/wrong-password') {
+        friendly = 'Incorrect password';
+      } else if (error.code === 'auth/invalid-email') {
+        friendly = 'Invalid email address';
+      } else if (error.code === 'auth/too-many-requests') {
+        friendly = 'Too many failed attempts. Try again later';
+      } else if (error.code === 'auth/network-request-failed') {
+        friendly = 'Network error – please check your connection';
+      } else {
+        friendly = 'Login failed. Please try again';
+      }
+      setError(`${friendly}\n(Code: ${error.code})`);
     } finally {
       setLoading(false);
     }
@@ -103,6 +143,7 @@ const LoginScreen = ({ navigation }) => {
       >
         Login
       </Button>
+
 
       <View style={styles.registerContainer}>
         <Text style={styles.registerPrompt}>Don't have an account? </Text>

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "936471207377",
+    "project_id": "donateblood-2bf21",
+    "storage_bucket": "donateblood-2bf21.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:936471207377:android:cfea1be47dee55f29b54f0",
+        "android_client_info": {
+          "package_name": "com.harry_r.BAPP"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCsjq6wVk_5MY8LDXQjEZezkbbo6EBs05U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

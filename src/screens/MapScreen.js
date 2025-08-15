@@ -17,12 +17,8 @@ import polyline from '@mapbox/polyline';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase/config';
-import * as Speech from 'expo-speech';
 import { LinearGradient } from 'expo-linear-gradient';
-import Constants from 'expo-constants';
-
-// Get environment variables directly from app.config.js extra section
-const extra = Constants.expoConfig?.extra || {};
+import * as Speech from 'expo-speech';
 
 const { width, height } = Dimensions.get('window');
 
@@ -35,8 +31,15 @@ const MapScreen = ({ route, navigation }) => {
   const [routeCoords, setRouteCoords] = useState([]);
   const [routeInfo, setRouteInfo] = useState(null);
   const [isNavigating, setIsNavigating] = useState(false);
-  const [navigationSteps, setNavigationSteps] = useState([]);
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  
+  // New navigation states
+  const [navigationMode, setNavigationMode] = useState(false);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [directions, setDirections] = useState([]);
+  const [remainingDistance, setRemainingDistance] = useState('');
+  const [remainingTime, setRemainingTime] = useState('');
+  const [nextInstruction, setNextInstruction] = useState('');
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
 
   // Get request details from navigation params
   const requestData = route?.params?.requestData || null;
@@ -47,12 +50,13 @@ const MapScreen = ({ route, navigation }) => {
   // Use either passed requestData or fetched data
   const currentRequestData = requestData || fetchedRequestData || {};
   const {
-    address: hospitalAddress = '',
+    address: hospitalAddress = currentRequestData.hospitalAddress || '',
     hospital: hospitalName = 'Hospital',
     patientName = '',
     bloodGroup: bloodType = '',
     urgency = 'routine',
     contact: contactNumber = '',
+    location: savedLocation = null,
   } = currentRequestData;
 
   // Fetch request data if only requestId is provided
@@ -85,10 +89,47 @@ const MapScreen = ({ route, navigation }) => {
     }
   }, [hospitalAddress]);
 
+  // Location tracking for navigation
+  useEffect(() => {
+    let locationSubscription;
+    
+    if (navigationMode) {
+      const startLocationTracking = async () => {
+        locationSubscription = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.BestForNavigation,
+            timeInterval: 1000,
+            distanceInterval: 5,
+          },
+          (location) => {
+            setUserLocation(location.coords);
+            updateNavigationProgress(location.coords);
+          }
+        );
+      };
+      
+      startLocationTracking();
+    }
+    
+    return () => {
+      if (locationSubscription) {
+        locationSubscription.remove();
+      }
+    };
+  }, [navigationMode, currentStep]);
+
   const initializeMap = async () => {
     try {
       setLoading(true);
       setErrorMsg(null);
+      
+      console.log('=== MapScreen Debug Info ===');
+      console.log('RequestId:', requestId);
+      console.log('RequestData:', requestData);
+      console.log('FetchedRequestData:', fetchedRequestData);
+      console.log('CurrentRequestData:', currentRequestData);
+      console.log('Hospital Address:', hospitalAddress);
+      console.log('Hospital Name:', hospitalName);
 
       // Request location permissions
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -107,11 +148,31 @@ const MapScreen = ({ route, navigation }) => {
       
       setUserLocation(userLoc.coords);
 
-      // Geocode hospital address if provided
-      if (hospitalAddress) {
+      // First check if we have saved location coordinates
+      if (savedLocation && savedLocation.latitude && savedLocation.longitude) {
+        console.log('Using saved location coordinates:', savedLocation);
+        setHospitalCoords(savedLocation);
+        await getDirections(userLoc.coords, savedLocation);
+        
+        // Fit map to show both locations
+        setTimeout(() => {
+          if (mapRef.current && !navigationMode) {
+            mapRef.current.fitToCoordinates(
+              [userLoc.coords, savedLocation],
+              {
+                edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
+                animated: true,
+              }
+            );
+          }
+        }, 1000);
+        
+      } else if (hospitalAddress && hospitalAddress.trim() !== '') {
+        // Fallback to geocoding if no saved coordinates
+        console.log('No saved coordinates, geocoding address:', hospitalAddress);
         await geocodeHospitalAndGetDirections(userLoc.coords);
       } else {
-        setErrorMsg('Hospital address not provided');
+        setErrorMsg(`Hospital location not available. Request data: ${JSON.stringify(currentRequestData)}`);
       }
     } catch (error) {
       console.error('Error initializing map:', error);
@@ -143,7 +204,7 @@ const MapScreen = ({ route, navigation }) => {
       
       // Fit map to show both locations
       setTimeout(() => {
-        if (mapRef.current) {
+        if (mapRef.current && !navigationMode) {
           mapRef.current.fitToCoordinates(
             [userCoords, hospitalLocation],
             {
@@ -161,8 +222,7 @@ const MapScreen = ({ route, navigation }) => {
 
   const getDirections = async (origin, destination) => {
     try {
-      // Use environment variable for Google Maps API key
-      const apiKey = extra.GOOGLE_MAPS_API_KEY || 'AIzaSyBlB34GJNGbRexESR9zILOTx7s5mcIPhkE';
+      const apiKey = 'AIzaSyBlB34GJNGbRexESR9zILOTx7s5mcIPhkE';
       const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&key=${apiKey}&mode=driving&traffic_model=best_guess&departure_time=now`;
       
       const response = await fetch(url);
@@ -171,19 +231,28 @@ const MapScreen = ({ route, navigation }) => {
       if (data.status === 'OK' && data.routes.length > 0) {
         const route = data.routes[0];
         const leg = route.legs[0];
+        
         // Decode polyline
         const points = route.overview_polyline.points;
         const coords = polyline.decode(points).map(([lat, lng]) => ({
           latitude: lat,
           longitude: lng,
         }));
+        
         setRouteCoords(coords);
         setRouteInfo({
-          ...route,
           distance: leg.distance.text,
           duration: leg.duration.text,
           durationInTraffic: leg.duration_in_traffic?.text || leg.duration.text,
         });
+
+        // Store step-by-step directions
+        setDirections(leg.steps);
+        if (leg.steps.length > 0) {
+          setNextInstruction(leg.steps[0].html_instructions.replace(/<[^>]*>/g, ''));
+          setRemainingDistance(leg.distance.text);
+          setRemainingTime(leg.duration_in_traffic?.text || leg.duration.text);
+        }
       } else {
         setErrorMsg(data.error_message || 'Could not find route to hospital');
       }
@@ -193,55 +262,210 @@ const MapScreen = ({ route, navigation }) => {
     }
   };
 
-  const handleStartNavigation = () => {
-    if (!hospitalCoords || !routeInfo || !routeInfo.legs) return;
-    // Gather navigation steps from directions API response
-    const steps = routeInfo.legs[0]?.steps || [];
-    setNavigationSteps(steps);
-    setCurrentStepIndex(0);
-    setIsNavigating(true);
-  };
+  const updateNavigationProgress = (currentLocation) => {
+    if (!directions.length || !hospitalCoords || !hospitalCoords.latitude || !hospitalCoords.longitude) return;
 
-  useEffect(() => {
-    if (isNavigating && navigationSteps.length > 0) {
-      const currentStep = navigationSteps[currentStepIndex];
-      if (currentStep?.instruction) {
-        Speech.stop();
-        Speech.speak(currentStep.instruction, { language: 'en', pitch: 1.1, rate: 1.0 });
+    // Calculate distance to destination
+    const distanceToDestination = calculateDistance(
+      currentLocation.latitude,
+      currentLocation.longitude,
+      hospitalCoords.latitude,
+      hospitalCoords.longitude
+    );
+
+    // Check if arrived (within 50 meters)
+    if (distanceToDestination < 0.05) {
+      handleArrival();
+      return;
+    }
+
+    // Update remaining distance/time estimates
+    const estimatedTime = Math.ceil(distanceToDestination * 2); // rough estimate
+    setRemainingDistance(`${distanceToDestination.toFixed(1)} km`);
+    setRemainingTime(`${estimatedTime} min`);
+
+    // Check if need to move to next instruction
+    if (currentStep < directions.length - 1) {
+      const nextStep = directions[currentStep + 1];
+      if (nextStep && nextStep.start_location) {
+        const distanceToNextStep = calculateDistance(
+          currentLocation.latitude,
+          currentLocation.longitude,
+          nextStep.start_location.lat,
+          nextStep.start_location.lng
+        );
+
+        // If within 100 meters of next instruction, advance
+        if (distanceToNextStep < 0.1) {
+          setCurrentStep(currentStep + 1);
+          const instruction = nextStep.html_instructions.replace(/<[^>]*>/g, '');
+          setNextInstruction(instruction);
+          
+          if (voiceEnabled) {
+            Speech.speak(instruction, {
+              language: 'en-US',
+              pitch: 1.0,
+              rate: 0.8
+            });
+          }
+        }
       }
     }
-    // Stop speech when navigation ends
-    if (!isNavigating) {
-      Speech.stop();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNavigating, currentStepIndex, navigationSteps]);
-
-  const handleNextStep = () => {
-    if (currentStepIndex < navigationSteps.length - 1) {
-      setCurrentStepIndex(currentStepIndex + 1);
-    }
   };
 
-  const handlePrevStep = () => {
-    if (currentStepIndex > 0) {
-      setCurrentStepIndex(currentStepIndex - 1);
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  const handleStartInAppNavigation = () => {
+    if (!hospitalCoords || !directions.length) {
+      Alert.alert('Error', 'Route information not available');
+      return;
     }
+
+    Alert.alert(
+      'Start In-App Navigation',
+      'Begin turn-by-turn navigation within the app?',
+      [
+        {
+          text: 'Start Navigation',
+          onPress: () => {
+            setNavigationMode(true);
+            setCurrentStep(0);
+            
+            // Center map on user location
+            if (mapRef.current && userLocation) {
+              mapRef.current.animateToRegion({
+                latitude: userLocation.latitude,
+                longitude: userLocation.longitude,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
+              }, 1000);
+            }
+
+            // Speak first instruction
+            if (voiceEnabled && directions[0]) {
+              const instruction = directions[0].html_instructions.replace(/<[^>]*>/g, '');
+              Speech.speak(`Navigation started. ${instruction}`, {
+                language: 'en-US',
+                pitch: 1.0,
+                rate: 0.8
+              });
+            }
+          },
+        },
+        {
+          text: 'External Maps',
+          onPress: () => handleStartNavigation(),
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ]
+    );
   };
 
-  const handleExitNavigation = () => {
-    setIsNavigating(false);
-    setCurrentStepIndex(0);
-    setNavigationSteps([]);
+  const handleStopNavigation = () => {
+    Alert.alert(
+      'Stop Navigation',
+      'Are you sure you want to stop navigation?',
+      [
+        {
+          text: 'Stop',
+          onPress: () => {
+            setNavigationMode(false);
+            setCurrentStep(0);
+            Speech.stop();
+            
+            // Reset map view
+            if (mapRef.current && userLocation && hospitalCoords) {
+              mapRef.current.fitToCoordinates(
+                [userLocation, hospitalCoords],
+                {
+                  edgePadding: { top: 100, right: 50, bottom: 300, left: 50 },
+                  animated: true,
+                }
+              );
+            }
+          },
+        },
+        {
+          text: 'Continue',
+          style: 'cancel',
+        },
+      ]
+    );
   };
 
+  const handleArrival = () => {
+    setNavigationMode(false);
+    Speech.speak('You have arrived at your destination. Thank you for your blood donation!', {
+      language: 'en-US',
+      pitch: 1.0,
+      rate: 0.8
+    });
+    
+    Alert.alert(
+      '🎉 Arrived!',
+      'You have reached the hospital. Thank you for your life-saving donation!',
+      [
+        {
+          text: 'Call Hospital',
+          onPress: () => handleCallHospital(),
+        },
+        {
+          text: 'Done',
+          onPress: () => navigation.goBack(),
+        },
+      ]
+    );
+  };
+
+  const handleStartNavigation = () => {
+    if (!hospitalCoords) return;
+    
+    Alert.alert(
+      'External Navigation',
+      'Choose your preferred navigation app:',
+      [
+        {
+          text: 'Google Maps',
+          onPress: () => openGoogleMaps(),
+        },
+        {
+          text: 'Apple Maps',
+          onPress: () => openAppleMaps(),
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ]
+    );
+  };
 
   const openGoogleMaps = () => {
+    if (!hospitalCoords || !hospitalCoords.latitude || !hospitalCoords.longitude) {
+      Alert.alert('Error', 'Hospital location not available');
+      return;
+    }
     const url = `https://www.google.com/maps/dir/?api=1&destination=${hospitalCoords.latitude},${hospitalCoords.longitude}&travelmode=driving`;
     Linking.openURL(url);
   };
 
   const openAppleMaps = () => {
+    if (!hospitalCoords || !hospitalCoords.latitude || !hospitalCoords.longitude) {
+      Alert.alert('Error', 'Hospital location not available');
+      return;
+    }
     const url = `http://maps.apple.com/?daddr=${hospitalCoords.latitude},${hospitalCoords.longitude}&dirflg=d`;
     Linking.openURL(url);
   };
@@ -271,109 +495,231 @@ const MapScreen = ({ route, navigation }) => {
     );
   };
 
+  // Custom Donor Marker Component
+  const DonorMarker = () => (
+    <View style={styles.customMarkerContainer}>
+      <View style={styles.donorMarkerShadow} />
+      <View style={styles.donorMarkerMain}>
+        <LinearGradient
+          colors={['#ff6f61', '#ffb199']}
+          style={styles.donorMarkerGradient}
+        >
+          <Ionicons name="person" size={24} color="white" />
+        </LinearGradient>
+        <View style={styles.donorMarkerPulse} />
+      </View>
+      <View style={styles.markerTail} />
+    </View>
+  );
 
-  // Example donor name, replace with actual user context if available
+  // Custom Hospital Marker Component
+  const HospitalMarker = () => (
+    <View style={styles.customMarkerContainer}>
+      <View style={styles.hospitalMarkerShadow} />
+      <View style={styles.hospitalMarkerMain}>
+        <LinearGradient
+          colors={['#ff5252', '#ff6f61']}
+          style={styles.hospitalMarkerGradient}
+        >
+          <View style={styles.hospitalCross}>
+            <View style={styles.crossVertical} />
+            <View style={styles.crossHorizontal} />
+          </View>
+        </LinearGradient>
+        <View style={styles.hospitalMarkerPulse} />
+      </View>
+      <View style={styles.markerTail} />
+    </View>
+  );
+
   const donorName = "Hari";
 
-  // --- MAIN RETURN BLOCK ---
-  return (
-    <View style={styles.container}>
-      {/* Floating Glass Header */}
-      <View style={styles.headerGlass}>
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
         <LinearGradient
-          colors={['#ff6f61', '#fff5f5']}
-          style={styles.headerGradient}
+          colors={['#ff6f61', '#ffb199']}
+          style={styles.loadingGradient}
         >
-          <Text style={styles.headerHello}>Hi, {donorName} 👋</Text>
-          <Text style={styles.headerMsg}>Thank you for being a lifesaver!</Text>
+          <View style={styles.loadingContent}>
+            <View style={styles.loadingSpinner}>
+              <ActivityIndicator size="large" color="white" />
+            </View>
+            <Text style={styles.loadingText}>Finding Your Route</Text>
+            <Text style={styles.loadingSubText}>Connecting to hospital location...</Text>
+          </View>
         </LinearGradient>
       </View>
+    );
+  }
+
+  if (errorMsg) {
+    return (
+      <View style={styles.errorContainer}>
+        <LinearGradient
+          colors={['#ff5252', '#ff6f61']}
+          style={styles.errorGradient}
+        >
+          <View style={styles.errorContent}>
+            <View style={styles.errorIcon}>
+              <Ionicons name="warning-outline" size={64} color="white" />
+            </View>
+            <Text style={styles.errorTitle}>Navigation Error</Text>
+            <Text style={styles.errorText}>{errorMsg}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={initializeMap}>
+              <LinearGradient
+                colors={['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.1)']}
+                style={styles.retryButtonGradient}
+              >
+                <Ionicons name="refresh" size={20} color="white" />
+                <Text style={styles.retryButtonText}>Try Again</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+      </View>
+    );
+  }
+
+  // Don't render map until we have user location
+  if (!userLocation) {
+    return (
+      <View style={styles.loadingContainer}>
+        <LinearGradient
+          colors={['#ff6f61', '#ffb199']}
+          style={styles.loadingGradient}
+        >
+          <View style={styles.loadingContent}>
+            <View style={styles.loadingSpinner}>
+              <ActivityIndicator size="large" color="white" />
+            </View>
+            <Text style={styles.loadingText}>Getting Your Location</Text>
+            <Text style={styles.loadingSubText}>Please enable location permissions...</Text>
+          </View>
+        </LinearGradient>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      {/* Navigation Header or Regular Header */}
+      {navigationMode ? (
+        <View style={styles.navigationHeader}>
+          <LinearGradient
+            colors={['#ff5252', '#ff6f61']}
+            style={styles.navigationHeaderGradient}
+          >
+            <View style={styles.navigationInfo}>
+              <View style={styles.navigationTop}>
+                <Text style={styles.remainingTime}>{remainingTime}</Text>
+                <Text style={styles.remainingDistance}>{remainingDistance}</Text>
+                <TouchableOpacity 
+                  style={styles.voiceToggle}
+                  onPress={() => setVoiceEnabled(!voiceEnabled)}
+                >
+                  <Ionicons 
+                    name={voiceEnabled ? "volume-high" : "volume-mute"} 
+                    size={20} 
+                    color="white" 
+                  />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.navigationInstruction}>{nextInstruction}</Text>
+            </View>
+            <TouchableOpacity 
+              style={styles.stopNavigationButton}
+              onPress={handleStopNavigation}
+            >
+              <Ionicons name="close" size={24} color="white" />
+            </TouchableOpacity>
+          </LinearGradient>
+        </View>
+      ) : (
+        <View style={styles.headerGlass}>
+          <LinearGradient
+            colors={['#ff6f61', '#fff5f5']}
+            style={styles.headerGradient}
+          >
+            <Text style={styles.headerHello}>Hi, {donorName} 👋</Text>
+            <Text style={styles.headerMsg}>Thank you for being a lifesaver!</Text>
+          </LinearGradient>
+        </View>
+      )}
+
       {/* Map View */}
       <MapView
         ref={mapRef}
         style={styles.map}
         provider={PROVIDER_GOOGLE}
-        showsUserLocation={false}
-        showsMyLocationButton={false}
-        showsTraffic={true}
-        followsUserLocation={false}
-        customMapStyle={[]}
         initialRegion={{
-          latitude: userLocation?.latitude || 13.0827,
-          longitude: userLocation?.longitude || 80.2707,
-          latitudeDelta: 0.0922,
-          longitudeDelta: 0.0421,
+          latitude: userLocation.latitude,
+          longitude: userLocation.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
         }}
+        showsUserLocation
+        showsCompass
+        showsTraffic
       >
-        {/* User Location Marker */}
-        {userLocation && (
-          <Marker
-            coordinate={{
-              latitude: userLocation.latitude,
-              longitude: userLocation.longitude,
-            }}
-            title="Your Location"
-            description="Blood Donor"
-            anchor={{ x: 0.5, y: 1 }}
-          />
-        )}
-        {/* Hospital Marker */}
+        {/* Custom User Marker */}
+        <Marker coordinate={userLocation} title="You">
+          <View style={styles.userMarkerOuter}>
+            <View style={styles.userMarkerInner} />
+          </View>
+        </Marker>
+        {/* Custom Hospital Marker */}
         {hospitalCoords && (
-          <Marker
-            coordinate={hospitalCoords}
-            title={hospitalName}
-            description={hospitalAddress}
-            anchor={{ x: 0.5, y: 1 }}
-          />
+          <Marker coordinate={hospitalCoords} title={hospitalName} description={hospitalAddress}>
+            <View style={styles.hospitalMarkerOuter}>
+              <Ionicons name="medkit" size={24} color="#fff" />
+            </View>
+          </Marker>
         )}
-        {/* Route Polyline */}
         {routeCoords.length > 0 && (
-          <Polyline
-            coordinates={routeCoords}
-            strokeColor="#ff6f61"
-            strokeWidth={5}
-            strokePattern={[1, 0]}
-            lineCap="round"
-            lineJoin="round"
-          />
+          <Polyline coordinates={routeCoords} strokeColor="#1976D2" strokeWidth={5} />
         )}
       </MapView>
-      {/* Enhanced Info Panel */}
-      <View style={styles.infoPanel}>
-        <LinearGradient
-          colors={['#fff5f5', '#ffffff']}
-          style={styles.infoPanelGradient}
-        >
-          <View style={styles.infoPanelHeader}>
-            <View style={styles.urgencyContainer}>
-              <View style={[
-                styles.urgencyBadge,
-                { backgroundColor: urgency === 'Critical' ? '#ff5252' : urgency === 'Urgent' ? '#ffb199' : '#ff6f61' }
-              ]}>
-                <Text style={styles.urgencyText}>
-                  {urgency?.toUpperCase()}
-                </Text>
+
+      {/* Info Panel (hidden during navigation) */}
+      {!navigationMode && (
+        <View style={styles.infoPanel}>
+          <LinearGradient
+            colors={['#fff5f5', '#ffffff']}
+            style={styles.infoPanelGradient}
+          >
+            <View style={styles.infoPanelHeader}>
+              <View style={styles.urgencyContainer}>
+                <View style={[
+                  styles.urgencyBadge,
+                  { backgroundColor: urgency === 'Critical' ? '#ff5252' : urgency === 'Urgent' ? '#ffb199' : '#ff6f61' }
+                ]}>
+                  <Text style={styles.urgencyText}>
+                    {urgency?.toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.bloodTypeContainer}>
+                  <Text style={styles.bloodTypeText}>{bloodType}</Text>
+                  <Ionicons name="water" size={16} color="#ff6f61" />
+                </View>
               </View>
-              <View style={styles.bloodTypeContainer}>
-                <Text style={styles.bloodTypeText}>{bloodType}</Text>
-                <Ionicons name="water" size={16} color="#ff6f61" />
+            </View>
+            <View style={styles.patientInfo}>
+              <View style={styles.infoRow}>
+                <Ionicons name="person-outline" size={16} color="#666" />
+                <Text style={styles.patientText}>{patientName || 'Anonymous Patient'}</Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Ionicons name="medical-outline" size={16} color="#666" />
+                <Text style={styles.hospitalText}>{hospitalName}</Text>
               </View>
             </View>
-          </View>
-          <View style={styles.patientInfo}>
-            <View style={styles.infoRow}>
-              <Ionicons name="person-outline" size={16} color="#666" />
-              <Text style={styles.patientText}>{patientName || 'Anonymous Patient'}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Ionicons name="medical-outline" size={16} color="#666" />
-              <Text style={styles.hospitalText}>{hospitalName}</Text>
-            </View>
-          </View>
-        </LinearGradient>
-      </View>
-      {/* Enhanced Route Info Panel */}
-      {routeInfo && (
+          </LinearGradient>
+        </View>
+      )}
+
+      {/* Route Info Panel (hidden during navigation) */}
+      {routeInfo && !navigationMode && (
         <View style={styles.routePanel}>
           <LinearGradient
             colors={['#fff5f5', '#ffffff']}
@@ -400,21 +746,32 @@ const MapScreen = ({ route, navigation }) => {
           </LinearGradient>
         </View>
       )}
-      {/* Enhanced Action Buttons */}
+
+      {/* Action Buttons */}
       <View style={styles.actionButtons}>
         <TouchableOpacity
           style={styles.primaryActionButton}
-          onPress={handleStartNavigation}
-          disabled={!hospitalCoords || isNavigating}
+          onPress={navigationMode ? handleStopNavigation : handleStartInAppNavigation}
+          disabled={!hospitalCoords}
         >
           <LinearGradient
-            colors={hospitalCoords && !isNavigating ? ['#ff6f61', '#ffb199'] : ['#ccc', '#999']}
+            colors={hospitalCoords ? 
+              (navigationMode ? ['#ff5252', '#ff6f61'] : ['#ff6f61', '#ffb199']) : 
+              ['#ccc', '#999']
+            }
             style={styles.actionButtonGradient}
           >
-            <Ionicons name="navigate" size={24} color="white" />
-            <Text style={styles.primaryActionText}>{isNavigating ? 'Navigating...' : 'Start Navigation'}</Text>
+            <Ionicons 
+              name={navigationMode ? "stop" : "navigate"} 
+              size={24} 
+              color="white" 
+            />
+            <Text style={styles.primaryActionText}>
+              {navigationMode ? 'Stop Navigation' : 'Start Navigation'}
+            </Text>
           </LinearGradient>
         </TouchableOpacity>
+
         <View style={styles.secondaryActions}>
           <TouchableOpacity
             style={styles.secondaryActionButton}
@@ -427,6 +784,7 @@ const MapScreen = ({ route, navigation }) => {
               <Ionicons name="call" size={20} color="white" />
             </LinearGradient>
           </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.secondaryActionButton}
             onPress={handleEmergency}
@@ -440,74 +798,98 @@ const MapScreen = ({ route, navigation }) => {
           </TouchableOpacity>
         </View>
       </View>
-      {/* In-App Navigation Panel */}
-      {isNavigating && navigationSteps.length > 0 && (
-        <View style={styles.navigationPanel}>
-          <View style={styles.navigationHeader}>
-            <Text style={styles.navigationTitle}>Turn-by-Turn Navigation</Text>
-            <TouchableOpacity onPress={handleExitNavigation} style={styles.exitNavButton}>
-              <Ionicons name="close" size={22} color="#ff6f61" />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.navigationStepBox}>
-            <Text style={styles.navigationStepText}>
-              Step {currentStepIndex + 1} of {navigationSteps.length}
-            </Text>
-            <Text style={styles.navigationInstruction}>
-              {navigationSteps[currentStepIndex]?.html_instructions?.replace(/<[^>]+>/g, '')}
-            </Text>
-            <Text style={styles.navigationDistance}>
-              {navigationSteps[currentStepIndex]?.distance?.text} • {navigationSteps[currentStepIndex]?.duration?.text}
-            </Text>
-          </View>
-          <View style={styles.navigationStepControls}>
-            <TouchableOpacity
-              onPress={handlePrevStep}
-              disabled={currentStepIndex === 0}
-              style={[styles.navStepButton, currentStepIndex === 0 && { opacity: 0.5 }]}
-            >
-              <Ionicons name="arrow-back" size={20} color="#ff6f61" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleNextStep}
-              disabled={currentStepIndex === navigationSteps.length - 1}
-              style={[styles.navStepButton, currentStepIndex === navigationSteps.length - 1 && { opacity: 0.5 }]}
-            >
-              <Ionicons name="arrow-forward" size={20} color="#ff6f61" />
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
 
-      {/* Enhanced My Location Button */}
-      <TouchableOpacity
-        style={styles.myLocationButton}
-        onPress={() => {
-          if (mapRef.current && userLocation) {
-            mapRef.current.animateToRegion({
-              latitude: userLocation.latitude,
-              longitude: userLocation.longitude,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            });
-          }
-        }}
-      >
-        <LinearGradient
-          colors={['#fff5f5', '#ffb199']}
-          style={styles.myLocationGradient}
+      {/* My Location Button (hidden during navigation) */}
+      {!navigationMode && (
+        <TouchableOpacity
+          style={styles.myLocationButton}
+          onPress={() => {
+            if (mapRef.current && userLocation) {
+              mapRef.current.animateToRegion({
+                latitude: userLocation.latitude,
+                longitude: userLocation.longitude,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
+              });
+            }
+          }}
         >
-          <Ionicons name="locate" size={24} color="#ff6f61" />
-        </LinearGradient>
-      </TouchableOpacity>
+          <LinearGradient
+            colors={['#fff5f5', '#ffb199']}
+            style={styles.myLocationGradient}
+          >
+            <Ionicons name="locate" size={24} color="#ff6f61" />
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
     </View>
   );
-
-}
-
+};
 
 const styles = StyleSheet.create({
-  // Floating Glass Header Styles
+  container: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+  },
+  map: {
+    flex: 1,
+  },
+
+  // Navigation Header Styles
+  navigationHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    paddingTop: 50,
+  },
+  navigationHeaderGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  navigationInfo: {
+    flex: 1,
+  },
+  navigationTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  remainingTime: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: 'white',
+    marginRight: 16,
+  },
+  remainingDistance: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.9)',
+    marginRight: 16,
+  },
+  voiceToggle: {
+    marginLeft: 'auto',
+    padding: 8,
+  },
+  navigationInstruction: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.95)',
+    fontWeight: '500',
+  },
+  stopNavigationButton: {
+    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 20,
+  },
+
+  // Regular Header Styles
   headerGlass: {
     position: 'absolute',
     top: 0,
@@ -515,7 +897,7 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 20,
     alignItems: 'center',
-    paddingTop: 38,
+    paddingTop: 50,
     paddingBottom: 14,
   },
   headerGradient: {
@@ -542,14 +924,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.92)',
     fontWeight: '500',
     letterSpacing: 0.1,
-  },
-
-  container: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-  map: {
-    flex: 1,
   },
 
   // Loading Styles
@@ -580,17 +954,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.8)',
     textAlign: 'center',
     marginBottom: 30,
-  },
-  loadingDots: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.6)',
-    marginHorizontal: 4,
   },
 
   // Error Styles
@@ -681,7 +1044,7 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 30,
     borderWidth: 2,
-    borderColor: 'rgba(78, 205, 196, 0.3)',
+    borderColor: 'rgba(255, 111, 97, 0.3)',
   },
   
   // Hospital Marker
@@ -717,7 +1080,7 @@ const styles = StyleSheet.create({
     height: 65,
     borderRadius: 32.5,
     borderWidth: 2,
-    borderColor: 'rgba(255, 107, 107, 0.3)',
+    borderColor: 'rgba(255, 82, 82, 0.3)',
   },
   hospitalCross: {
     width: 20,
@@ -757,7 +1120,7 @@ const styles = StyleSheet.create({
   // Info Panel Styles
   infoPanel: {
     position: 'absolute',
-    top: 60,
+    top: 140,
     left: 16,
     right: 16,
     borderRadius: 16,
@@ -792,7 +1155,7 @@ const styles = StyleSheet.create({
   bloodTypeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 107, 107, 0.1)',
+    backgroundColor: 'rgba(255, 111, 97, 0.1)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
@@ -800,7 +1163,7 @@ const styles = StyleSheet.create({
   bloodTypeText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#FF6B6B',
+    color: '#ff6f61',
     marginRight: 4,
   },
   patientInfo: {
@@ -826,7 +1189,7 @@ const styles = StyleSheet.create({
   // Route Panel Styles
   routePanel: {
     position: 'absolute',
-    top: 220,
+    top: 300,
     left: 16,
     borderRadius: 12,
     overflow: 'hidden',
@@ -861,7 +1224,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: 'rgba(78, 205, 196, 0.1)',
+    backgroundColor: 'rgba(255, 111, 97, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 8,
@@ -941,7 +1304,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 107, 107, 0.2)',
+    borderColor: 'rgba(255, 111, 97, 0.2)',
+  },
+
+  // New Marker Styles
+  userMarkerOuter: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#3182CE',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  userMarkerInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#fff',
+  },
+  hospitalMarkerOuter: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E53E3E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
 });
 

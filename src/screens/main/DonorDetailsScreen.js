@@ -19,37 +19,89 @@ const DonorDetailsScreen = ({ route, navigation }) => {
       try {
         setLoading(true);
         
+        console.log('=== DONOR DETAILS DEBUG ===');
+        console.log('Route params:', route.params);
+        console.log('Donors array:', donorsArray);
+        console.log('Donors length:', donorsArray.length);
+        
         // Fetch full donor details from users collection
-        const donorPromises = donorsArray.map(async (donor) => {
-          if (donor.userId) {
-            const userDoc = await getDoc(doc(db, 'users', donor.userId));
-            if (userDoc.exists()) {
-              const userData = userDoc.data();
-              return {
-                ...donor,
-                ...userData,
-                userId: donor.userId
-              };
+        const donorPromises = donorsArray.map(async (donorItem, index) => {
+          console.log(`Processing donor ${index + 1}:`, donorItem);
+          console.log(`Type of donor item:`, typeof donorItem);
+          
+          let userId;
+          let donorData = {};
+          
+          // Handle different data formats
+          if (typeof donorItem === 'string') {
+            // If it's just a user ID string
+            userId = donorItem;
+            console.log(`Donor is a string (userId): ${userId}`);
+          } else if (typeof donorItem === 'object' && donorItem !== null) {
+            // If it's an object, extract userId and keep existing data
+            userId = donorItem.userId;
+            donorData = { ...donorItem };
+            console.log(`Donor is an object with userId: ${userId}`);
+          } else {
+            console.log(`Invalid donor format:`, donorItem);
+            return null;
+          }
+          
+          if (userId) {
+            console.log(`Fetching user data for userId: ${userId}`);
+            try {
+              const userDoc = await getDoc(doc(db, 'users', userId));
+              if (userDoc.exists()) {
+                const userData = userDoc.data();
+                console.log(`User data found:`, userData);
+                const combined = {
+                  ...donorData,
+                  ...userData,
+                  userId: userId
+                };
+                console.log(`Combined donor data:`, combined);
+                return combined;
+              } else {
+                console.log(`No user document found for userId: ${userId}`);
+              }
+            } catch (fetchError) {
+              console.error(`Error fetching user ${userId}:`, fetchError);
             }
           }
-          return donor; // fallback to original donor data
+          
+          return donorData.userId ? donorData : null; // Return original data if we have userId, null otherwise
         });
 
-        const fullDonorDetails = await Promise.all(donorPromises);
-        setDonorDetails(fullDonorDetails);
+        const results = await Promise.all(donorPromises);
+        const validDonorDetails = results.filter(donor => donor !== null);
+        console.log('Final donor details:', validDonorDetails);
+        setDonorDetails(validDonorDetails);
 
         // Fetch request details for hospital coordinates
         if (requestId) {
+          console.log('Fetching request details for requestId:', requestId);
           const requestDoc = await getDoc(doc(db, 'requests', requestId));
           if (requestDoc.exists()) {
             const requestData = requestDoc.data();
-            if (requestData.location) {
-              setHospitalCoords({
+            console.log('Request data:', requestData);
+            if (requestData.location && requestData.location.latitude && requestData.location.longitude) {
+              const coords = {
                 latitude: requestData.location.latitude,
                 longitude: requestData.location.longitude
-              });
+              };
+              console.log('Setting hospital coordinates:', coords);
+              setHospitalCoords(coords);
+            } else {
+              console.log('Request location data is invalid:', requestData.location);
+              setHospitalCoords(null);
             }
+          } else {
+            console.log('Request document not found for requestId:', requestId);
+            setHospitalCoords(null);
           }
+        } else {
+          console.log('No requestId provided');
+          setHospitalCoords(null);
         }
       } catch (error) {
         console.error('Error fetching donor details:', error);
@@ -67,6 +119,16 @@ const DonorDetailsScreen = ({ route, navigation }) => {
   }, [donorsArray, requestId]);
 
   const handleViewMap = (donor) => {
+    // Check if hospital coordinates are available
+    if (!hospitalCoords || !hospitalCoords.latitude || !hospitalCoords.longitude) {
+      Alert.alert(
+        'Location Not Available', 
+        'Hospital location coordinates are not available. Cannot show tracking map.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     navigation.navigate('DonorTrackingScreen', {
       requestId,
       hospitalCoords,
@@ -74,6 +136,10 @@ const DonorDetailsScreen = ({ route, navigation }) => {
       selectedDonor: donor // Pass the specific donor if needed
     });
   };
+
+  const donor = route?.params?.donor;
+  const donorName = donor?.name || "Unknown";
+  const donorBloodGroup = donor?.bloodGroup || "Unknown";
 
   return (
     <View style={styles.container}>
@@ -108,60 +174,124 @@ const DonorDetailsScreen = ({ route, navigation }) => {
             <Text style={styles.sectionTitle}>
               {donorDetails.length} Donor{donorDetails.length > 1 ? 's' : ''} Accepted
             </Text>
-            {donorDetails.map((donor, idx) => (
-              <Card key={idx} style={styles.donorCard}>
-                <Card.Content>
-                  <View style={styles.donorHeader}>
-                    <Avatar.Text 
-                      size={56} 
-                      label={donor?.name ? donor.name.charAt(0).toUpperCase() : 'D'}
-                      style={styles.avatar}
-                      labelStyle={styles.avatarLabel}
-                    />
-                    <View style={styles.donorInfo}>
-                      <Text style={styles.donorName}>{donor?.name || `Donor ${idx + 1}`}</Text>
-                      <View style={styles.bloodGroupBadge}>
-                        <Icon name="water" size={14} color="#ff6f61" />
-                        <Text style={styles.bloodGroupText}>{donor?.bloodGroup || 'Unknown'}</Text>
+            {donorDetails.map((donor, idx) => {
+              // Enhanced logic to extract donor information
+              console.log(`=== RENDERING DONOR ${idx + 1} ===`);
+              console.log('Raw donor data:', JSON.stringify(donor, null, 2));
+              console.log('Available keys:', Object.keys(donor || {}));
+              
+              // Create a unique key for this donor
+              const uniqueKey = donor?.userId || donor?.id || `donor-${idx}-${Date.now()}`;
+              
+              // Try multiple field combinations for name
+              const displayName = donor?.name || 
+                                donor?.displayName || 
+                                donor?.fullName || 
+                                donor?.username || 
+                                donor?.email?.split('@')[0] ||
+                                `Donor ${idx + 1}`;
+              
+              console.log('Display name result:', displayName);
+              
+              // Try multiple field combinations for blood group  
+              const displayBloodGroup = donor?.bloodGroup || 
+                                      donor?.blood_group || 
+                                      donor?.bloodType || 
+                                      donor?.blood_type ||
+                                      'Unknown';
+              
+              console.log('Display blood group result:', displayBloodGroup);
+              
+              // Extract phone number with fallbacks
+              const phoneNumber = donor?.phoneNumber || 
+                                donor?.phone || 
+                                donor?.mobile || 
+                                donor?.contact ||
+                                'No phone provided';
+              
+              console.log('Phone number result:', phoneNumber);
+              
+              // Extract profile photo
+              const profilePhoto = donor?.photoURL || 
+                                  donor?.profilePhoto || 
+                                  donor?.avatar ||
+                                  null;
+              
+              console.log('Profile photo result:', profilePhoto);
+              return (
+                <Card key={uniqueKey} style={styles.donorCard}>
+                  <Card.Content>
+                    <View style={styles.donorHeader}>
+                      {profilePhoto ? (
+                        <Avatar.Image 
+                          size={56} 
+                          source={{ uri: profilePhoto }}
+                          style={styles.avatar}
+                        />
+                      ) : (
+                        <Avatar.Text 
+                          size={56} 
+                          label={displayName.charAt(0).toUpperCase()}
+                          style={styles.avatar}
+                          labelStyle={styles.avatarLabel}
+                        />
+                      )}
+                      <View style={styles.donorInfo}>
+                        <Text style={styles.donorName}>{displayName}</Text>
+                        <View style={styles.bloodGroupBadge}>
+                          <Icon name="water" size={14} color="#ff6f61" />
+                          <Text style={styles.bloodGroupText}>{displayBloodGroup}</Text>
+                        </View>
+                        {donor?.acceptedAt && (
+                          <Text style={styles.acceptedTime}>
+                            Accepted: {new Date(donor.acceptedAt.toDate ? donor.acceptedAt.toDate() : donor.acceptedAt).toLocaleString()}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={styles.donorNumber}>
+                        <Text style={styles.numberText}>#{idx + 1}</Text>
                       </View>
                     </View>
-                    <View style={styles.donorNumber}>
-                      <Text style={styles.numberText}>#{idx + 1}</Text>
-                    </View>
-                  </View>
 
-                  <View style={styles.contactInfo}>
-                    <View style={styles.contactItem}>
-                      <Icon name="phone" size={16} color="#666" />
-                      <Text style={styles.contactText}>{donor?.phoneNumber || 'No phone provided'}</Text>
+                    <View style={styles.contactInfo}>
+                      <View style={styles.contactItem}>
+                        <Icon name="phone" size={16} color="#666" />
+                        <Text style={styles.contactText}>{phoneNumber}</Text>
+                      </View>
+                      {donor?.email && (
+                        <View style={styles.contactItem}>
+                          <Icon name="email" size={16} color="#666" />
+                          <Text style={styles.contactText}>{donor.email}</Text>
+                        </View>
+                      )}
                     </View>
-                  </View>
 
-                  <View style={styles.actionButtons}>
-                    <Button
-                      mode="contained"
-                      icon="phone"
-                      onPress={() => donor?.phoneNumber && Linking.openURL(`tel:${donor.phoneNumber}`)}
-                      style={[styles.actionButton, styles.callButton]}
-                      disabled={!donor?.phoneNumber}
-                      compact
-                    >
-                      Call
-                    </Button>
-                    <Button
-                      mode="outlined"
-                      icon="map"
-                      onPress={() => handleViewMap(donor)}
-                      style={[styles.actionButton, styles.mapButton]}
-                      disabled={!hospitalCoords}
-                      compact
-                    >
-                      Track
-                    </Button>
-                  </View>
-                </Card.Content>
-              </Card>
-            ))}
+                    <View style={styles.actionButtons}>
+                      <Button
+                        mode="contained"
+                        icon="phone"
+                        onPress={() => phoneNumber !== 'No phone provided' && Linking.openURL(`tel:${phoneNumber}`)}
+                        style={[styles.actionButton, styles.callButton]}
+                        disabled={phoneNumber === 'No phone provided'}
+                        compact
+                      >
+                        Call
+                      </Button>
+                      <Button
+                        mode="outlined"
+                        icon="map"
+                        onPress={() => handleViewMap(donor)}
+                        style={[styles.actionButton, styles.mapButton]}
+                        disabled={!hospitalCoords || !hospitalCoords.latitude || !hospitalCoords.longitude}
+                        compact
+                      >
+                        {(!hospitalCoords || !hospitalCoords.latitude || !hospitalCoords.longitude) ? 'Location N/A' : 'Track'}
+                      </Button>
+                    </View>
+                  </Card.Content>
+                </Card>
+              );
+            })}
           </>
         )}
       </ScrollView>
@@ -282,6 +412,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 4,
     fontSize: 12,
+  },
+  acceptedTime: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   donorNumber: {
     backgroundColor: '#f0f0f0',

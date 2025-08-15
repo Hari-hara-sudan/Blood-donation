@@ -6,7 +6,6 @@ import * as Location from 'expo-location';
 import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, orderBy, setDoc, enableMultiTabIndexedDbPersistence, serverTimestamp, addDoc, deleteDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { db, auth, COLLECTIONS } from '../../services/firebase/config';
-import { initializeNotifications } from '../../services/NotificationService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, StatusBar, Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -25,9 +24,8 @@ const HomeScreen = ({ navigation }) => {
   const [yourRequests, setYourRequests] = useState([]);
   const [availableRequests, setAvailableRequests] = useState([]);
   const [retryCount, setRetryCount] = useState(0);
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [selectedDonor, setSelectedDonor] = useState(null);
+  
   const [profilePhotoURL, setProfilePhotoURL] = useState(null);
   const [timers, setTimers] = useState({});
   const [newRequestsAvailable, setNewRequestsAvailable] = useState(false);
@@ -89,31 +87,6 @@ const HomeScreen = ({ navigation }) => {
     });
 
     return () => unsubscribeStats();
-  }, []);
-
-  useEffect(() => {
-    if (!auth.currentUser) return;
-
-    const notificationsQuery = query(
-      collection(db, 'notifications'),
-      where('userId', '==', auth.currentUser.uid),
-      where('read', '==', false),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribeNotifications = onSnapshot(notificationsQuery, (snapshot) => {
-      const notificationsList = [];
-      snapshot.forEach((doc) => {
-        notificationsList.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
-      setNotifications(notificationsList);
-      setUnreadCount(notificationsList.length);
-    });
-
-    return () => unsubscribeNotifications();
   }, []);
 
   const checkLocationPermissions = async () => {
@@ -342,32 +315,87 @@ const HomeScreen = ({ navigation }) => {
       // Get current user (donor) details
       const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
       const userData = userDoc.data();
-      
+
       // Get request details
       const requestRef = doc(db, 'requests', requestId);
       const requestDoc = await getDoc(requestRef);
       const requestData = requestDoc.data();
-  
-      // Update request with donor details
-      await updateDoc(requestRef, {
-        status: 'accepted',
-        donorId: auth.currentUser.uid,
-        donorDetails: {
-          name: userData.name,
-          phoneNumber: userData.phoneNumber,
-          bloodGroup: userData.bloodGroup,
-          photoURL: userData.photoURL || null,
-          acceptedAt: serverTimestamp()
+
+      // Prepare new donor object
+      const newDonor = {
+        userId: auth.currentUser.uid,
+        name: userData.name,
+        phoneNumber: userData.phoneNumber,
+        bloodGroup: userData.bloodGroup,
+        photoURL: userData.photoURL || null,
+        acceptedAt: serverTimestamp()
+      };
+
+      console.log('New donor object:', newDonor);
+
+      // Append donor to donors array (create if missing)
+      let donorsArray = Array.isArray(requestData.donors) ? [...requestData.donors] : [];
+      console.log('Current donors array:', donorsArray);
+      
+      // Clean up any corrupted donors data (strings instead of objects)
+      const cleanedDonors = [];
+      for (const donor of donorsArray) {
+        if (typeof donor === 'string') {
+          // This is a corrupted entry - try to fetch the user data
+          console.log('Found corrupted donor entry (string):', donor);
+          try {
+            const corruptedUserDoc = await getDoc(doc(db, 'users', donor));
+            if (corruptedUserDoc.exists()) {
+              const corruptedUserData = corruptedUserDoc.data();
+              cleanedDonors.push({
+                userId: donor,
+                name: corruptedUserData.name,
+                phoneNumber: corruptedUserData.phoneNumber,
+                bloodGroup: corruptedUserData.bloodGroup,
+                photoURL: corruptedUserData.photoURL || null,
+                acceptedAt: serverTimestamp() // We don't know the original time
+              });
+              console.log('Fixed corrupted donor data:', cleanedDonors[cleanedDonors.length - 1]);
+            }
+          } catch (error) {
+            console.error('Error cleaning up donor data:', error);
+          }
+        } else if (typeof donor === 'object' && donor !== null && donor.userId) {
+          cleanedDonors.push(donor);
         }
+      }
+      
+      donorsArray = cleanedDonors;
+      console.log('Cleaned donors array:', donorsArray);
+      
+      // Prevent duplicate acceptance - handle both object and string formats
+      const isDuplicate = donorsArray.some(d => {
+        if (typeof d === 'string') {
+          return d === newDonor.userId;
+        } else if (typeof d === 'object' && d !== null) {
+          return d.userId === newDonor.userId;
+        }
+        return false;
       });
-  
+      
+      if (!isDuplicate) {
+        donorsArray.push(newDonor);
+        console.log('Updated donors array:', donorsArray);
+        await updateDoc(requestRef, {
+          donors: donorsArray
+        });
+        console.log('Successfully updated request with new donor');
+      } else {
+        console.log('Donor already exists in the array');
+      }
+
       // Show confirmation to donor
       Alert.alert(
         'Success',
         'You have accepted the request. The requester will be notified.',
         [{ text: 'OK' }]
       );
-  
+
     } catch (error) {
       console.error('Error accepting request:', error);
       Alert.alert('Error', 'Failed to accept request');
@@ -749,11 +777,13 @@ const HomeScreen = ({ navigation }) => {
             <Button
               mode="contained"
               icon="check-circle"
-              style={[styles.availableRequestsButton, { backgroundColor: '#2196F3', marginTop: 8 }]}
+              style={[styles.availableRequestsButton, { backgroundColor: '#f05656ff', marginTop: 8 }]}
               onPress={() => navigation.navigate('AcceptedRequests')}
             >
               View Accepted Requests
             </Button>
+
+
 
             {yourRequests.length > 0 && (
               <>

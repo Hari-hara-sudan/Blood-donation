@@ -13,15 +13,21 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 const { width } = Dimensions.get('window');
 
 const getCurrentLocation = async () => {
-  const { status } = await Location.requestForegroundPermissionsAsync();
-  if (status !== 'granted') {
-    throw new Error('Permission denied');
+  try {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      console.log('Location permission denied');
+      return null; // Return null instead of throwing error
+    }
+    const location = await Location.getCurrentPositionAsync({});
+    return {
+      latitude: location.coords.latitude,
+      longitude: location.coords.longitude
+    };
+  } catch (error) {
+    console.log('Location error:', error);
+    return null; // Fallback to null
   }
-  const location = await Location.getCurrentPositionAsync({});
-  return {
-    latitude: location.coords.latitude,
-    longitude: location.coords.longitude
-  };
 };
 
 const RegisterScreen = ({ navigation }) => {
@@ -81,22 +87,20 @@ const RegisterScreen = ({ navigation }) => {
         lastDonation: lastDonation || null,
         medicalConditions: medicalConditions || 'None',
         phoneNumber,
-        location: {
-          latitude: location.latitude,
-          longitude: location.longitude
-        },
+        location: location || { latitude: 0, longitude: 0 }, // Fallback location
         isAvailable: true,
         donationCount: 0,
         lastUpdated: serverTimestamp(),
         createdAt: serverTimestamp(),
-        kyc_verified: false,
+
       });
       navigation.reset({
         index: 0,
         routes: [{ name: 'Home' }],
       });
     } catch (error) {
-      setError(error.message);
+      console.error('Registration error:', error);
+      setError(error.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -2,6 +2,10 @@
 #
 .DS_Store
 
+# Flask Backend Security
+flask-backend/firebase-service-account.json
+flask-backend/*.log
+
 # Xcode
 #
 build/

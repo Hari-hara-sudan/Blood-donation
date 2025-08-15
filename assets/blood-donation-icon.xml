@@ -1,0 +1,261 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="1024dp"
+    android:height="1024dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+  
+  <!-- Background with gradient -->
+  <path
+      android:pathData="M0,0h1024v1024h-1024z">
+    <aapt:attr name="android:fillColor" xmlns:aapt="http://schemas.android.com/aapt">
+      <gradient
+          android:startColor="#FF8C69"
+          android:endColor="#FF4500"
+          android:type="radial"
+          android:centerX="512"
+          android:centerY="300"
+          android:gradientRadius="600"/>
+    </aapt:attr>
+  </path>
+  
+  <!-- Secondary gradient overlay -->
+  <path
+      android:pathData="M0,0h1024v512h-1024z">
+    <aapt:attr name="android:fillColor" xmlns:aapt="http://schemas.android.com/aapt">
+      <gradient
+          android:startColor="#FF69B4"
+          android:endColor="#FF6B4A"
+          android:type="linear"
+          android:angle="135"
+          android:startX="0"
+          android:startY="0"
+          android:endX="1024"
+          android:endY="512"/>
+    </aapt:attr>
+  </path>
+  
+  <!-- Main blood drop centered -->
+  <group android:translateX="512" android:translateY="400">
+    <!-- Large blood drop -->
+    <path
+        android:fillColor="#B22222"
+        android:pathData="M0,-150c-60,0 -110,45 -110,100c0,80 110,150 110,150s110,-70 110,-150c0,-55 -50,-100 -110,-100z"/>
+    
+    <!-- Inner shadow/highlight -->
+    <path
+        android:fillColor="#DC143C"
+        android:pathData="M0,-140c-50,0 -95,40 -95,85c0,70 95,135 95,135s95,-65 95,-135c0,-45 -45,-85 -95,-85z"/>
+    
+    <!-- Light reflection -->
+    <path
+        android:fillColor="#FF69B4"
+        android:fillAlpha="0.4"
+        android:pathData="M-30,-120c-20,0 -35,15 -35,35c0,25 35,50 35,50s35,-25 35,-50c0,-20 -15,-35 -35,-35z"/>
+    
+    <!-- Medical cross in center -->
+    <group>
+      <!-- Horizontal bar -->
+      <path
+          android:fillColor="#FFFFFF"
+          android:pathData="M-40,-15h80v30h-80z"/>
+      <!-- Vertical bar -->
+      <path
+          android:fillColor="#FFFFFF"
+          android:pathData="M-15,-40h30v80h-30z"/>
+      
+      <!-- Cross border for depth -->
+      <path
+          android:strokeColor="#E0E0E0"
+          android:strokeWidth="2"
+          android:pathData="M-40,-15h80v30h-80z"/>
+      <path
+          android:strokeColor="#E0E0E0"
+          android:strokeWidth="2"
+          android:pathData="M-15,-40h30v80h-30z"/>
+    </group>
+  </group>
+  
+  <!-- Blood type indicators around the drop -->
+  <group android:translateX="200" android:translateY="200">
+    <circle
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.9"
+        android:radius="35"/>
+    <text
+        android:text="A+"
+        android:textSize="24"
+        android:textColor="#FF6B4A"
+        android:fontFamily="sans-serif-medium"
+        android:textAlignment="center"
+        android:x="0"
+        android:y="8"/>
+  </group>
+  
+  <group android:translateX="824" android:translateY="200">
+    <circle
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.9"
+        android:radius="35"/>
+    <text
+        android:text="O-"
+        android:textSize="24"
+        android:textColor="#FF6B4A"
+        android:fontFamily="sans-serif-medium"
+        android:textAlignment="center"
+        android:x="0"
+        android:y="8"/>
+  </group>
+  
+  <group android:translateX="200" android:translateY="600">
+    <circle
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.9"
+        android:radius="35"/>
+    <text
+        android:text="B+"
+        android:textSize="24"
+        android:textColor="#FF6B4A"
+        android:fontFamily="sans-serif-medium"
+        android:textAlignment="center"
+        android:x="0"
+        android:y="8"/>
+  </group>
+  
+  <group android:translateX="824" android:translateY="600">
+    <circle
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.9"
+        android:radius="35"/>
+    <text
+        android:text="AB+"
+        android:textSize="20"
+        android:textColor="#FF6B4A"
+        android:fontFamily="sans-serif-medium"
+        android:textAlignment="center"
+        android:x="0"
+        android:y="6"/>
+  </group>
+  
+  <!-- Connection lines -->
+  <group android:alpha="0.3">
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:pathData="M235,235L477,365"/>
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:pathData="M789,235L547,365"/>
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:pathData="M235,565L477,435"/>
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:pathData="M789,565L547,435"/>
+  </group>
+  
+  <!-- Donor silhouettes at bottom -->
+  <group android:translateY="700" android:alpha="0.6">
+    <!-- Person 1 -->
+    <group android:translateX="200">
+      <path
+          android:fillColor="#8B0000"
+          android:pathData="M0,0c-15,0 -30,10 -30,40v100h60v-100c0,-30 -15,-40 -30,-40z"/>
+      <circle
+          android:fillColor="#8B0000"
+          android:radius="20"
+          android:cx="0"
+          android:cy="-20"/>
+      <!-- Raised hand -->
+      <path
+          android:fillColor="#8B0000"
+          android:pathData="M-40,20c0,-10 10,-20 20,-10l15,15v30h-10l-25,-35z"/>
+    </group>
+    
+    <!-- Person 2 -->
+    <group android:translateX="400">
+      <path
+          android:fillColor="#8B0000"
+          android:pathData="M0,0c-15,0 -30,10 -30,40v100h60v-100c0,-30 -15,-40 -30,-40z"/>
+      <circle
+          android:fillColor="#8B0000"
+          android:radius="20"
+          android:cx="0"
+          android:cy="-20"/>
+      <!-- Raised hand -->
+      <path
+          android:fillColor="#8B0000"
+          android:pathData="M40,20c0,-10 -10,-20 -20,-10l-15,15v30h10l25,-35z"/>
+    </group>
+    
+    <!-- Person 3 -->
+    <group android:translateX="624">
+      <path
+          android:fillColor="#8B0000"
+          android:pathData="M0,0c-15,0 -30,10 -30,40v100h60v-100c0,-30 -15,-40 -30,-40z"/>
+      <circle
+          android:fillColor="#8B0000"
+          android:radius="20"
+          android:cx="0"
+          android:cy="-20"/>
+      <!-- Raised hand -->
+      <path
+          android:fillColor="#8B0000"
+          android:pathData="M-40,20c0,-10 10,-20 20,-10l15,15v30h-10l-25,-35z"/>
+    </group>
+    
+    <!-- Person 4 -->
+    <group android:translateX="824">
+      <path
+          android:fillColor="#8B0000"
+          android:pathData="M0,0c-15,0 -30,10 -30,40v100h60v-100c0,-30 -15,-40 -30,-40z"/>
+      <circle
+          android:fillColor="#8B0000"
+          android:radius="20"
+          android:cx="0"
+          android:cy="-20"/>
+      <!-- Raised hand -->
+      <path
+          android:fillColor="#8B0000"
+          android:pathData="M40,20c0,-10 -10,-20 -20,-10l-15,15v30h10l25,-35z"/>
+    </group>
+  </group>
+  
+  <!-- Location pins -->
+  <group android:alpha="0.7">
+    <group android:translateX="150" android:translateY="450">
+      <path
+          android:fillColor="#FFFFFF"
+          android:pathData="M0,-15c-8,0 -15,7 -15,15c0,8 15,20 15,20s15,-12 15,-20c0,-8 -7,-15 -15,-15z"/>
+      <circle
+          android:fillColor="#FF6B4A"
+          android:radius="5"
+          android:cx="0"
+          android:cy="-7"/>
+    </group>
+    
+    <group android:translateX="874" android:translateY="350">
+      <path
+          android:fillColor="#FFFFFF"
+          android:pathData="M0,-15c-8,0 -15,7 -15,15c0,8 15,20 15,20s15,-12 15,-20c0,-8 -7,-15 -15,-15z"/>
+      <circle
+          android:fillColor="#FF6B4A"
+          android:radius="5"
+          android:cx="0"
+          android:cy="-7"/>
+    </group>
+    
+    <group android:translateX="750" android:translateY="700">
+      <path
+          android:fillColor="#FFFFFF"
+          android:pathData="M0,-15c-8,0 -15,7 -15,15c0,8 15,20 15,20s15,-12 15,-20c0,-8 -7,-15 -15,-15z"/>
+      <circle
+          android:fillColor="#FF6B4A"
+          android:radius="5"
+          android:cx="0"
+          android:cy="-7"/>
+    </group>
+  </group>
+</vector>

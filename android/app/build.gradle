@@ -82,7 +82,7 @@ def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInRelea
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 android {
-    ndkVersion rootProject.ext.ndkVersion
+    ndkVersion "25.2.9519653"
 
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
@@ -94,6 +94,17 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0.0"
+        
+        // Add NDK C++ flags to fix linking issues
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+        }
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++17", "-frtti", "-fexceptions"
+                arguments "-DANDROID_STL=c++_shared"
+            }
+        }
     }
     signingConfigs {
         debug {
@@ -121,6 +132,11 @@ android {
         jniLibs {
             useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
         }
+        pickFirst '**/libc++_shared.so'
+        pickFirst '**/libc++.so'
+        pickFirst '**/libfbjni.so'
+        pickFirst '**/libjsc.so'
+        pickFirst '**/libreactnativejni.so'
     }
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'

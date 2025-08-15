@@ -1,5 +1,5 @@
-import { initializeApp } from 'firebase/app';
-import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import { initializeApp, getApps } from 'firebase/app';
+import { initializeAuth, getReactNativePersistence, getAuth } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -8,24 +8,44 @@ import Constants from 'expo-constants';
 // Get environment variables directly from app.config.js extra section
 const extra = Constants.expoConfig?.extra || {};
 
-// Your Firebase config using environment variables from app.config.js
+// Firebase config (must match the android/app/google-services.json values for consistency)
+// NOTE: Previously the apiKey here differed from the one inside google-services.json which can
+// sometimes cause unexpected auth/network issues in release builds. Keep them in sync.
 const firebaseConfig = {
-  apiKey: extra.FIREBASE_API_KEY || "AIzaSyAyaItySsM_khVZGLYwgNXmppib0i73mFI",
-  authDomain: extra.FIREBASE_AUTH_DOMAIN || "donateblood-2bf21.firebaseapp.com",
-  projectId: extra.FIREBASE_PROJECT_ID || "donateblood-2bf21",
-  storageBucket: extra.FIREBASE_STORAGE_BUCKET || "donateblood-2bf21.firebasestorage.app",
-  messagingSenderId: extra.FIREBASE_MESSAGING_SENDER_ID || "936471207377",
-  appId: extra.FIREBASE_APP_ID || "1:936471207377:web:569c2e0704c686909b54f0",
-  measurementId: extra.FIREBASE_MEASUREMENT_ID || "G-JX31HFEZ44"
+  apiKey: "AIzaSyCsjq6wVk_5MY8LDXQjEZezkbbo6EBs05U", // from google-services.json current_key
+  authDomain: "donateblood-2bf21.firebaseapp.com",
+  projectId: "donateblood-2bf21",
+  storageBucket: "donateblood-2bf21.firebasestorage.app",
+  messagingSenderId: "936471207377",
+  appId: "1:936471207377:web:569c2e0704c686909b54f0",
+  measurementId: "G-JX31HFEZ44"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase (guard against re-initialization in fast refresh scenarios)
+let app;
+if (getApps().length === 0) {
+  app = initializeApp(firebaseConfig);
+  console.log('[Firebase] Initialized app with projectId:', firebaseConfig.projectId);
+} else {
+  app = getApps()[0];
+  console.log('[Firebase] Reusing existing app instance');
+}
 
 // Initialize Auth with AsyncStorage persistence
-const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage)
-});
+let auth;
+try {
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage)
+  });
+} catch (error) {
+  // If auth is already initialized, get the existing instance
+  if (error.code === 'auth/already-initialized') {
+    auth = getAuth(app);
+    console.log('[Firebase] Reusing existing auth instance');
+  } else {
+    throw error;
+  }
+}
 
 // Initialize Firestore (Database)
 const db = getFirestore(app);
@@ -43,7 +63,7 @@ export const COLLECTIONS = {
   NOTIFICATIONS: 'notifications',
   DONATIONS: 'donations',
   STATS: 'stats',
-  KYC_VERIFICATION: 'kyc_verification' // Added for KYC
+
 };
 
 // Add request status constants
